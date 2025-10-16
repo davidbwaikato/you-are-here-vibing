@@ -32,6 +32,8 @@ export const useSegmentationLoop = ({
   
   // Track if overlay is enabled at the time of segmentation start
   const overlayEnabledAtStartRef = useRef(isVideoOverlayEnabled);
+  // Track if tracking is enabled at the time of segmentation start
+  const trackingEnabledAtStartRef = useRef(isTrackingEnabled);
 
   // FPS calculation state
   const [segmentationFps, setSegmentationFps] = useState<number>(0);
@@ -77,15 +79,19 @@ export const useSegmentationLoop = ({
       
       isSegmentingRef.current = true;
       
-      // Capture overlay state at the start of this segmentation
+      // Capture state at the start of this segmentation
       overlayEnabledAtStartRef.current = isVideoOverlayEnabled;
+      trackingEnabledAtStartRef.current = isTrackingEnabled;
       
       try {
         const segmentationTensor = await segment();
 
-        // CRITICAL: Check if overlay is still enabled after async segment() completes
-        if (!overlayEnabledAtStartRef.current) {
-          console.log('[Segmentation] Overlay disabled during segment() - discarding result');
+        // CRITICAL: Check if tracking and overlay are still enabled after async segment() completes
+        if (!trackingEnabledAtStartRef.current || !overlayEnabledAtStartRef.current) {
+          console.log('[Segmentation] State changed during segment() - discarding result', {
+            trackingEnabled: trackingEnabledAtStartRef.current,
+            overlayEnabled: overlayEnabledAtStartRef.current
+          });
           isSegmentingRef.current = false;
           return;
         }
@@ -112,9 +118,12 @@ export const useSegmentationLoop = ({
             videoElement.videoHeight
           );
           
-          // CRITICAL: Check again if overlay is still enabled after async processTensorToImageData() completes
-          if (!overlayEnabledAtStartRef.current) {
-            console.log('[Segmentation] Overlay disabled during processTensorToImageData() - discarding result');
+          // CRITICAL: Check again if tracking and overlay are still enabled after async processTensorToImageData() completes
+          if (!trackingEnabledAtStartRef.current || !overlayEnabledAtStartRef.current) {
+            console.log('[Segmentation] State changed during processTensorToImageData() - discarding result', {
+              trackingEnabled: trackingEnabledAtStartRef.current,
+              overlayEnabled: overlayEnabledAtStartRef.current
+            });
             isSegmentingRef.current = false;
             return;
           }
@@ -148,10 +157,11 @@ export const useSegmentationLoop = ({
     };
   }, [isInitialized, isCameraActive, isTrackingEnabled, isVideoOverlayEnabled, videoElement, segment, segmentationCanvas, segmentationCtx]);
 
-  // Update the ref whenever overlay state changes
+  // Update the refs whenever state changes
   useEffect(() => {
     overlayEnabledAtStartRef.current = isVideoOverlayEnabled;
-  }, [isVideoOverlayEnabled]);
+    trackingEnabledAtStartRef.current = isTrackingEnabled;
+  }, [isVideoOverlayEnabled, isTrackingEnabled]);
 
   const clearCache = () => {
     segmentationDataRef.current = null;

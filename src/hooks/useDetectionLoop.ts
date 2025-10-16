@@ -45,6 +45,9 @@ export const useDetectionLoop = ({
   const baseHeadingRef = useRef<number>(INITIAL_HEADING);
   const lastDispatchedHeadingRef = useRef<number>(INITIAL_HEADING);
 
+  // Track if tracking is enabled at the time of detection start
+  const trackingEnabledAtStartRef = useRef(isTrackingEnabled);
+
   // FPS calculation state
   const [detectionFps, setDetectionFps] = useState<number>(0);
   const lastDetectionTimeRef = useRef<number>(performance.now());
@@ -80,8 +83,18 @@ export const useDetectionLoop = ({
       
       isDetectingRef.current = true;
       
+      // Capture tracking state at the start of this detection
+      trackingEnabledAtStartRef.current = isTrackingEnabled;
+      
       try {
         const result = await detect();
+
+        // CRITICAL: Check if tracking is still enabled after async detect() completes
+        if (!trackingEnabledAtStartRef.current) {
+          console.log('[Detection] Tracking disabled during detect() - discarding result');
+          isDetectingRef.current = false;
+          return;
+        }
 
         // Calculate FPS
         const currentTime = performance.now();
@@ -168,6 +181,11 @@ export const useDetectionLoop = ({
       }
     };
   }, [isInitialized, isCameraActive, isTrackingEnabled, videoElement, detect, dispatch, onShoulderAngleChange]);
+
+  // Update the ref whenever tracking state changes
+  useEffect(() => {
+    trackingEnabledAtStartRef.current = isTrackingEnabled;
+  }, [isTrackingEnabled]);
 
   const clearCache = () => {
     detectionResultRef.current = null;
