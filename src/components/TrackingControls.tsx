@@ -30,7 +30,7 @@ export const TrackingControls = ({
   heading,
   detectionFps,
   segmentationFps,
-  renderFps,
+  //renderFps,
   onToggleTracking,
   onToggleSkeletonVisibility,
   onToggleVideoOverlay,

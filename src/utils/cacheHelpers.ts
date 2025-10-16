@@ -1,6 +1,6 @@
 // Deep copy helper functions to prevent reference mutation
 
-import { FaceDetection, BodyDetection, HandDetection, BlazePoseKeypoint } from '@/types/detection';
+import { FaceDetection, BodyDetection, HandDetection/*, BlazePoseKeypoint*/ } from '@/types/detection';
 
 export const deepCopyFace = (face: FaceDetection[]): FaceDetection[] => {
   return face.map(f => ({
