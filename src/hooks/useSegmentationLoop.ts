@@ -29,6 +29,9 @@ export const useSegmentationLoop = ({
   const segmentationDataRef = useRef<ImageData | null>(null);
   const isSegmentingRef = useRef(false);
   const segmentationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Track if overlay is enabled at the time of segmentation start
+  const overlayEnabledAtStartRef = useRef(isVideoOverlayEnabled);
 
   // FPS calculation state
   const [segmentationFps, setSegmentationFps] = useState<number>(0);
@@ -74,8 +77,18 @@ export const useSegmentationLoop = ({
       
       isSegmentingRef.current = true;
       
+      // Capture overlay state at the start of this segmentation
+      overlayEnabledAtStartRef.current = isVideoOverlayEnabled;
+      
       try {
         const segmentationTensor = await segment();
+
+        // CRITICAL: Check if overlay is still enabled after async segment() completes
+        if (!overlayEnabledAtStartRef.current) {
+          console.log('[Segmentation] Overlay disabled during segment() - discarding result');
+          isSegmentingRef.current = false;
+          return;
+        }
 
         // Calculate FPS
         const currentTime = performance.now();
@@ -98,6 +111,13 @@ export const useSegmentationLoop = ({
             videoElement.videoWidth,
             videoElement.videoHeight
           );
+          
+          // CRITICAL: Check again if overlay is still enabled after async processTensorToImageData() completes
+          if (!overlayEnabledAtStartRef.current) {
+            console.log('[Segmentation] Overlay disabled during processTensorToImageData() - discarding result');
+            isSegmentingRef.current = false;
+            return;
+          }
           
           if (imageData) {
             segmentationDataRef.current = imageData;
@@ -127,6 +147,11 @@ export const useSegmentationLoop = ({
       }
     };
   }, [isInitialized, isCameraActive, isTrackingEnabled, isVideoOverlayEnabled, videoElement, segment, segmentationCanvas, segmentationCtx]);
+
+  // Update the ref whenever overlay state changes
+  useEffect(() => {
+    overlayEnabledAtStartRef.current = isVideoOverlayEnabled;
+  }, [isVideoOverlayEnabled]);
 
   const clearCache = () => {
     segmentationDataRef.current = null;
