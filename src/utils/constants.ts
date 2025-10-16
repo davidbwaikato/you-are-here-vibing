@@ -14,6 +14,9 @@ export const FACIAL_KEYPOINT_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 // DETECTION INTERVAL: How often to run detection (in milliseconds)
 export const DETECTION_INTERVAL_MS = 50; // ~20fps
 
+// SEGMENTATION INTERVAL: How often to run segmentation (in milliseconds)
+export const SEGMENTATION_INTERVAL_MS = 50; // ~20fps
+
 // LOGGING INTERVAL: How often to log debug info (every N frames)
 export const LOG_INTERVAL_FRAMES = 30;
 export const RENDER_LOG_INTERVAL_FRAMES = 120;

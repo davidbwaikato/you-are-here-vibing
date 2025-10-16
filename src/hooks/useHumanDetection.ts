@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 // Dynamic import to avoid SSR issues
 let Human: any = null;
@@ -40,7 +40,7 @@ export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
             enabled: true,
           },
           gesture: {
-            enabled: false,
+            enabled: true,
           },
           segmentation: {
             enabled: true,
@@ -76,73 +76,33 @@ export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
     initHuman();
   }, []);
 
-  const detect = async () => {
+  const detect = useCallback(async () => {
     if (!humanRef.current || !videoElement || !isInitialized) {
-      console.log('[Human.js] Detection skipped - not ready:', {
-        hasHuman: !!humanRef.current,
-        hasVideo: !!videoElement,
-        isInitialized
-      });
       return null;
     }
 
     try {
       const result = await humanRef.current.detect(videoElement);
-      
-      // Log detection results with 3D data
-      console.log('[Human.js] Detection result:', {
-        faces: result.face?.length || 0,
-        bodies: result.body?.length || 0,
-        hands: result.hand?.length || 0,
-        timestamp: Date.now()
-      });
-
-      if (result.face?.length > 0) {
-        console.log('[Human.js] Face detected:', result.face[0]);
-      }
-      if (result.body?.length > 0) {
-        console.log('[Human.js] Body detected (3D):', {
-          keypointsCount: result.body[0].keypoints?.length,
-          sample3DPoint: result.body[0].keypoints
-        });
-      }
-      if (result.hand?.length > 0) {
-        console.log('[Human.js] Hand detected:', result.hand[0]);
-      }
-
       return result;
     } catch (err) {
       console.error('[Human.js] Detection error:', err);
       return null;
     }
-  };
+  }, [videoElement, isInitialized]);
 
-  const segment = async () => {
+  const segment = useCallback(async () => {
     if (!humanRef.current || !videoElement || !isInitialized) {
-      console.log('[Human.js] Segmentation skipped - not ready:', {
-        hasHuman: !!humanRef.current,
-        hasVideo: !!videoElement,
-        isInitialized
-      });
       return null;
     }
 
     try {
       const segmentationResult = await humanRef.current.segmentation(videoElement);
-      
-      console.log('[Human.js] Segmentation result:', {
-        hasTensor: !!segmentationResult,
-        tensorShape: segmentationResult?.shape,
-        tensorDtype: segmentationResult?.dtype,
-        timestamp: Date.now()
-      });
-
       return segmentationResult;
     } catch (err) {
       console.error('[Human.js] Segmentation error:', err);
       return null;
     }
-  };
+  }, [videoElement, isInitialized]);
 
   return { human: humanRef.current, detect, segment, isInitialized, error };
 };

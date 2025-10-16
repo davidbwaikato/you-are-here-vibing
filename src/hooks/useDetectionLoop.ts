@@ -1,12 +1,9 @@
-// Custom hook for detection loop management
-
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { setPov } from '@/store/streetViewSlice';
 import { HumanResult, CachedSkeletonParts } from '@/types/detection';
 import { deepCopyFace, deepCopyBody, deepCopyHand } from '@/utils/cacheHelpers';
 import { calculateShoulderAngle, normalizeHeading, calculateWrappedDelta } from '@/utils/shoulderTracking';
-import { processTensorToImageData } from '@/utils/tensorProcessing';
 import {
   DETECTION_INTERVAL_MS,
   LOG_INTERVAL_FRAMES,
@@ -21,7 +18,6 @@ interface UseDetectionLoopProps {
   isTrackingEnabled: boolean;
   videoElement: HTMLVideoElement | null;
   detect: () => Promise<any>;
-  segment: () => Promise<any>;
   onShoulderAngleChange: (angle: number | null) => void;
 }
 
@@ -31,13 +27,11 @@ export const useDetectionLoop = ({
   isTrackingEnabled,
   videoElement,
   detect,
-  segment,
   onShoulderAngleChange,
 }: UseDetectionLoopProps) => {
   const dispatch = useDispatch();
   
   const detectionResultRef = useRef<HumanResult | null>(null);
-  const segmentationDataRef = useRef<ImageData | null>(null);
   const isDetectingRef = useRef(false);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -51,45 +45,57 @@ export const useDetectionLoop = ({
   const baseHeadingRef = useRef<number>(INITIAL_HEADING);
   const lastDispatchedHeadingRef = useRef<number>(INITIAL_HEADING);
 
+  // FPS calculation state
+  const [detectionFps, setDetectionFps] = useState<number>(0);
+  const lastDetectionTimeRef = useRef<number>(performance.now());
+  const detectionFrameTimesRef = useRef<number[]>([]);
+  const FPS_SAMPLE_SIZE = 10;
+  const detectionCountRef = useRef(0);
+
   useEffect(() => {
+    // Clear any existing interval first
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
+
     if (!isInitialized || !isCameraActive || !isTrackingEnabled) {
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-        detectionIntervalRef.current = null;
-        console.log('[Detection] Loop stopped - tracking disabled');
-      }
+      console.log('[Detection] Loop stopped - conditions not met:', {
+        isInitialized,
+        isCameraActive,
+        isTrackingEnabled
+      });
+      setDetectionFps(0);
+      detectionFrameTimesRef.current = [];
+      detectionCountRef.current = 0;
       return;
     }
 
-    console.log('[Detection] Starting detection loop with segmentation...');
-    let detectionCount = 0;
+    console.log('[Detection] Starting detection loop...');
 
     const runDetection = async () => {
-      if (isDetectingRef.current) return;
+      if (isDetectingRef.current) {
+        return;
+      }
+      
       isDetectingRef.current = true;
       
       try {
-        // Run detection and segmentation in parallel
-        const [result, segmentationTensor] = await Promise.all([
-          detect(),
-          segment()
-        ]);
+        const result = await detect();
 
-        // Process segmentation tensor to ImageData
-        if (segmentationTensor && videoElement) {
-          const imageData = await processTensorToImageData(
-            segmentationTensor,
-            videoElement.videoWidth,
-            videoElement.videoHeight
-          );
-          
-          if (imageData) {
-            segmentationDataRef.current = imageData;
-            if (detectionCount % LOG_INTERVAL_FRAMES === 0) {
-              console.log('[Segmentation] ImageData updated in cache');
-            }
-          }
+        // Calculate FPS
+        const currentTime = performance.now();
+        const deltaTime = currentTime - lastDetectionTimeRef.current;
+        lastDetectionTimeRef.current = currentTime;
+        
+        detectionFrameTimesRef.current.push(deltaTime);
+        if (detectionFrameTimesRef.current.length > FPS_SAMPLE_SIZE) {
+          detectionFrameTimesRef.current.shift();
         }
+        
+        const avgDeltaTime = detectionFrameTimesRef.current.reduce((a, b) => a + b, 0) / detectionFrameTimesRef.current.length;
+        const fps = 1000 / avgDeltaTime;
+        setDetectionFps(fps);
         
         // Cache detection results with deep copy
         if (result?.face && result.face.length > 0) {
@@ -139,7 +145,11 @@ export const useDetectionLoop = ({
           onShoulderAngleChange(null);
         }
         
-        detectionCount++;
+        detectionCountRef.current++;
+        
+        if (detectionCountRef.current % LOG_INTERVAL_FRAMES === 0) {
+          console.log('[Detection] Frame:', detectionCountRef.current, 'FPS:', fps.toFixed(1));
+        }
       } catch (error) {
         console.error('[Detection] Error:', error);
       } finally {
@@ -148,30 +158,34 @@ export const useDetectionLoop = ({
     };
 
     detectionIntervalRef.current = setInterval(runDetection, DETECTION_INTERVAL_MS);
+    console.log('[Detection] Loop started with interval:', DETECTION_INTERVAL_MS, 'ms');
 
     return () => {
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
         detectionIntervalRef.current = null;
+        console.log('[Detection] Loop cleanup complete');
       }
     };
-  }, [isInitialized, isCameraActive, isTrackingEnabled, detect, segment, dispatch, videoElement, onShoulderAngleChange]);
+  }, [isInitialized, isCameraActive, isTrackingEnabled, videoElement, detect, dispatch, onShoulderAngleChange]);
 
   const clearCache = () => {
     detectionResultRef.current = null;
-    segmentationDataRef.current = null;
     baselineAngleRef.current = null;
     prevSkeletonPartsRef.current = {
       face: null,
       body: null,
       hand: null,
     };
+    setDetectionFps(0);
+    detectionFrameTimesRef.current = [];
+    detectionCountRef.current = 0;
   };
 
   return {
     detectionResultRef,
-    segmentationDataRef,
     prevSkeletonPartsRef,
+    detectionFps,
     clearCache,
   };
 };

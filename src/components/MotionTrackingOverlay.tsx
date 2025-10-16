@@ -1,19 +1,22 @@
 import { useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/store/store';
+import { setVideoOverlayEnabled } from '@/store/streetViewSlice';
 import { useHumanDetection } from '@/hooks/useHumanDetection';
 import { useCamera } from '@/hooks/useCamera';
 import { useCanvasSetup } from '@/hooks/useCanvasSetup';
 import { useDetectionLoop } from '@/hooks/useDetectionLoop';
+import { useSegmentationLoop } from '@/hooks/useSegmentationLoop';
 import { useRenderLoop } from '@/hooks/useRenderLoop';
 import { TrackingControls } from './TrackingControls';
 
 export const MotionTrackingOverlay = () => {
+  const dispatch = useDispatch();
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
-  const [isSkeletonVisible, setIsSkeletonVisible] = useState(true);
+  const [isSkeletonVisible, setIsSkeletonVisible] = useState(false);
   const [shoulderAngle, setShoulderAngle] = useState<number | null>(null);
   
-  const { pov } = useSelector((state: RootState) => state.streetView);
+  const { pov, isVideoOverlayEnabled } = useSelector((state: RootState) => state.streetView);
   
   // Initialize camera
   const { videoRef, cameraError, isCameraActive } = useCamera();
@@ -30,24 +33,39 @@ export const MotionTrackingOverlay = () => {
   // Initialize human detection
   const { detect, segment, isInitialized, error: humanError } = useHumanDetection(videoRef.current);
   
-  // Detection loop
+  // Detection loop with FPS tracking
   const {
     detectionResultRef,
-    segmentationDataRef,
     prevSkeletonPartsRef,
-    clearCache,
+    detectionFps,
+    clearCache: clearDetectionCache,
   } = useDetectionLoop({
     isInitialized,
     isCameraActive,
     isTrackingEnabled,
     videoElement: videoRef.current,
     detect,
-    segment,
     onShoulderAngleChange: setShoulderAngle,
   });
   
-  // Render loop
-  useRenderLoop({
+  // Segmentation loop with FPS tracking (independent from detection)
+  const {
+    segmentationDataRef,
+    segmentationFps,
+    clearCache: clearSegmentationCache,
+  } = useSegmentationLoop({
+    isInitialized,
+    isCameraActive,
+    isTrackingEnabled,
+    isVideoOverlayEnabled,
+    videoElement: videoRef.current,
+    segment,
+    segmentationCanvas: segmentationCanvasRef.current,
+    segmentationCtx: segmentationCtxRef.current,
+  });
+  
+  // Render loop with FPS tracking
+  const { renderFps } = useRenderLoop({
     isInitialized,
     isCameraActive,
     isTrackingEnabled,
@@ -69,7 +87,8 @@ export const MotionTrackingOverlay = () => {
       console.log('[Tracking] Toggle:', newState ? 'ON' : 'OFF');
       
       if (!newState) {
-        clearCache();
+        clearDetectionCache();
+        clearSegmentationCache();
         setShoulderAngle(null);
         console.log('[Persistence] Cache cleared - tracking disabled');
       }
@@ -84,6 +103,14 @@ export const MotionTrackingOverlay = () => {
       console.log('[Skeleton] Visibility toggle:', newState ? 'VISIBLE' : 'HIDDEN');
       return newState;
     });
+  };
+
+  const toggleVideoOverlay = () => {
+    dispatch(setVideoOverlayEnabled(!isVideoOverlayEnabled));
+    if (isVideoOverlayEnabled) {
+      clearSegmentationCache();
+      console.log('[Video Overlay] Disabled - segmentation cache cleared');
+    }
   };
 
   return (
@@ -109,10 +136,15 @@ export const MotionTrackingOverlay = () => {
         isInitialized={isInitialized}
         isTrackingEnabled={isTrackingEnabled}
         isSkeletonVisible={isSkeletonVisible}
+        isVideoOverlayEnabled={isVideoOverlayEnabled}
         shoulderAngle={shoulderAngle}
         heading={pov.heading}
+        detectionFps={detectionFps}
+        segmentationFps={segmentationFps}
+        renderFps={renderFps}
         onToggleTracking={toggleTracking}
         onToggleSkeletonVisibility={toggleSkeletonVisibility}
+        onToggleVideoOverlay={toggleVideoOverlay}
       />
     </>
   );

@@ -1,6 +1,6 @@
 // Custom hook for render loop management
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { drawSkeleton } from '@/utils/skeletonRenderer';
 import { HumanResult, CachedSkeletonParts } from '@/types/detection';
 import { VIDEO_OVERLAY_ALPHA, RENDER_LOG_INTERVAL_FRAMES } from '@/utils/constants';
@@ -37,9 +37,17 @@ export const useRenderLoop = ({
   cachedParts,
 }: UseRenderLoopProps) => {
   const animationFrameRef = useRef<number>();
+  
+  // FPS calculation state
+  const [renderFps, setRenderFps] = useState<number>(0);
+  const lastRenderTimeRef = useRef<number>(performance.now());
+  const renderFrameTimesRef = useRef<number[]>([]);
+  const FPS_SAMPLE_SIZE = 30; // Average over last 30 frames for smoother rendering FPS
 
   useEffect(() => {
     if (!isInitialized || !isCameraActive) {
+      setRenderFps(0);
+      renderFrameTimesRef.current = [];
       return;
     }
 
@@ -52,6 +60,20 @@ export const useRenderLoop = ({
         animationFrameRef.current = requestAnimationFrame(render);
         return;
       }
+
+      // Calculate FPS
+      const currentTime = performance.now();
+      const deltaTime = currentTime - lastRenderTimeRef.current;
+      lastRenderTimeRef.current = currentTime;
+      
+      renderFrameTimesRef.current.push(deltaTime);
+      if (renderFrameTimesRef.current.length > FPS_SAMPLE_SIZE) {
+        renderFrameTimesRef.current.shift();
+      }
+      
+      const avgDeltaTime = renderFrameTimesRef.current.reduce((a, b) => a + b, 0) / renderFrameTimesRef.current.length;
+      const fps = 1000 / avgDeltaTime;
+      setRenderFps(fps);
 
       const ctx = canvasElement.getContext('2d');
       if (!ctx) {
@@ -146,4 +168,6 @@ export const useRenderLoop = ({
     segmentationData,
     cachedParts,
   ]);
+
+  return { renderFps };
 };

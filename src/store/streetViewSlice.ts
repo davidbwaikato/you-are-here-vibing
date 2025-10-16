@@ -11,6 +11,7 @@ interface StreetViewState {
   };
   zoom: number;
   isLoaded: boolean;
+  isVideoOverlayEnabled: boolean;
 }
 
 const initialState: StreetViewState = {
@@ -24,6 +25,7 @@ const initialState: StreetViewState = {
   },
   zoom: 1,
   isLoaded: false,
+  isVideoOverlayEnabled: true,
 };
 
 const streetViewSlice = createSlice({
@@ -50,8 +52,13 @@ const streetViewSlice = createSlice({
       state.isLoaded = action.payload;
       console.log('[Redux Reducer] New isLoaded state:', state.isLoaded);
     },
+    setVideoOverlayEnabled: (state, action: PayloadAction<boolean>) => {
+      console.log('[Redux Reducer] setVideoOverlayEnabled called with:', action.payload);
+      state.isVideoOverlayEnabled = action.payload;
+      console.log('[Redux Reducer] New isVideoOverlayEnabled state:', state.isVideoOverlayEnabled);
+    },
   },
 });
 
-export const { setPosition, setPov, setZoom, setLoaded } = streetViewSlice.actions;
+export const { setPosition, setPov, setZoom, setLoaded, setVideoOverlayEnabled } = streetViewSlice.actions;
 export default streetViewSlice.reducer;
