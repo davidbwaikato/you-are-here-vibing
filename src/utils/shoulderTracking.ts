@@ -22,13 +22,15 @@ export const calculateShoulderAngle = (keypoints: BlazePoseKeypoint[]): number |
   
   // Calculate swivel angle using Y-Z plane (horizontal rotation)
   const dx = rightShoulder.position[0] - leftShoulder.position[0];
-  const dy = rightShoulder.position[1] - leftShoulder.position[1]; // horizontal difference
+  //const dy = rightShoulder.position[1] - leftShoulder.position[1]; // horizontal difference
   const dz = rightShoulder.position[2] - leftShoulder.position[2]; // depth difference
   
   // atan2 returns angle in radians, convert to degrees
   const angleRad = Math.atan2(dz, dx);
-  const angleDeg = angleRad * (180 / Math.PI);
-  
+  let angleDeg = angleRad * (180 / Math.PI);
+
+	angleDeg = (angleDeg + 360) % 360;
+	
   return angleDeg;
 };
 

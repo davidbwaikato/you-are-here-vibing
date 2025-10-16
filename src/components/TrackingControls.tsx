@@ -61,7 +61,7 @@ export const TrackingControls = ({
         {/* Tracking Status Toggle Button */}
         <button
           onClick={onToggleTracking}
-          className="w-64 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
+          className="w-52 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
         >
           {cameraError || humanError ? (
             <>
@@ -93,14 +93,14 @@ export const TrackingControls = ({
         {/* Video Overlay Toggle Button */}
         <button
           onClick={onToggleVideoOverlay}
-          className="w-64 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
+          className="w-52 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
         >
           {isVideoOverlayEnabled ? (
             <>
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse flex-shrink-0" />
               <Video className="w-4 h-4 text-purple-400 flex-shrink-0" />
               <span className="text-xs text-purple-400 font-mono">
-                Overlay/sec: {segmentationFps.toFixed(1)}
+                Overlay: {segmentationFps.toFixed(1)}/sec
               </span>
             </>
           ) : (
@@ -115,7 +115,7 @@ export const TrackingControls = ({
         {/* Skeleton Visibility Toggle Button */}
         <button
           onClick={onToggleSkeletonVisibility}
-          className="w-64 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
+          className="w-52 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
         >
           {isSkeletonVisible ? (
             <>
