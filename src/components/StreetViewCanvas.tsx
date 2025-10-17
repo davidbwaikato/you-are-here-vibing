@@ -85,6 +85,7 @@ export const StreetViewCanvas = () => {
         fullscreenControl: false,
         motionTracking: false,
         motionTrackingControl: false,
+        zoomControl: false,
         visible: true,
       });
 
@@ -238,9 +239,17 @@ export const StreetViewCanvas = () => {
         </div>
       )}
       
-      {/* Location Info Overlay */}
+      {/* Location Info Overlay - Bottom Left */}
       {(locationState.sourceAddress || locationState.destinationAddress) && (
-        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm text-slate-900 p-4 rounded-xl shadow-lg border border-slate-200 max-w-md" style={{ zIndex: 20 }}>
+        <div 
+          className="bg-white/90 backdrop-blur-sm text-slate-900 p-4 rounded-xl shadow-lg border border-slate-200 max-w-md" 
+          style={{ 
+            position: 'absolute',
+            bottom: '24px',
+            left: '24px',
+            zIndex: 20 
+          }}
+        >
           {locationState.sourceAddress && (
             <div className="mb-2">
               <span className="font-medium">Current: </span>
