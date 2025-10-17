@@ -240,28 +240,21 @@ export const StreetViewCanvas = () => {
       )}
       
       {/* Location Info Overlay - Bottom Left */}
-      {(locationState.sourceAddress || locationState.destinationAddress) && (
+      {locationState.sourceAddress && (
         <div 
-          className="bg-white/90 backdrop-blur-sm text-slate-900 p-4 rounded-xl shadow-lg border border-slate-200 max-w-md" 
+          className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-slate-200 px-3 py-2 whitespace-nowrap" 
           style={{ 
-            position: 'absolute',
-            bottom: '24px',
+            position: 'fixed',
+            bottom: '4px',
             left: '24px',
-            zIndex: 20 
+            zIndex: 50,
+            pointerEvents: 'auto',
+            maxWidth: 'fit-content'
           }}
         >
-          {locationState.sourceAddress && (
-            <div className="mb-2">
-              <span className="font-medium">Current: </span>
-              <span className="text-sm font-light">{locationState.sourceAddress}</span>
-            </div>
-          )}
-          {locationState.destinationAddress && (
-            <div>
-              <span className="font-medium">Destination: </span>
-              <span className="text-sm font-light">{locationState.destinationAddress}</span>
-            </div>
-          )}
+          <div className="text-sm font-light text-slate-900">
+            <span className="font-medium">Current:</span> {locationState.sourceAddress}
+          </div>
         </div>
       )}
     </div>
