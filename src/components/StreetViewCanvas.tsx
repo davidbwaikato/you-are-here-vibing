@@ -1,184 +1,260 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '@/store/store';
-import { setPosition, setPov, setZoom, setLoaded } from '@/store/streetViewSlice';
-import { useGoogleMaps } from '@/hooks/useGoogleMaps';
-import { SplashScreen } from './SplashScreen';
+import { RootState } from '../store/store';
+import { setPosition, setPov, setZoom, setLoaded, setDestinationLocation, setSourceAddress, setDestinationAddress } from '../store/streetViewSlice';
+import { useGoogleMaps } from '../hooks/useGoogleMaps';
+import { useLocationParams } from '../hooks/useLocationParams';
 import { MotionTrackingOverlay } from './MotionTrackingOverlay';
-import { AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { LocationErrorPage } from './LocationErrorPage';
+import { SplashScreen } from './SplashScreen';
+import { INITIAL_HEADING, INITIAL_PITCH } from '../utils/constants';
 
 export const StreetViewCanvas = () => {
-  const panoramaRef = useRef<HTMLDivElement>(null);
-  const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
-  const isUpdatingFromReduxRef = useRef(false); // Track if we're updating from Redux
   const dispatch = useDispatch();
-  const { position, pov, zoom } = useSelector((state: RootState) => state.streetView);
-  const { isLoaded, loadError } = useGoogleMaps();
+  const { position, pov, zoom, isVideoOverlayEnabled } = useSelector((state: RootState) => state.streetView);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const panoramaRef = useRef<google.maps.StreetViewPanorama | null>(null);
+  const { isLoaded: isGoogleMapsLoaded, loadError } = useGoogleMaps();
+  const locationState = useLocationParams(isGoogleMapsLoaded);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
   const [showSplash, setShowSplash] = useState(true);
-  const [streetViewReady, setStreetViewReady] = useState(false);
 
-  // Log Redux state changes
-  useEffect(() => {
-    console.log('[StreetViewCanvas] Redux state updated:', {
-      position,
-      pov,
-      zoom
-    });
-  }, [position, pov, zoom]);
+  // Determine if we're still loading
+  const isLoading = !isGoogleMapsLoaded || locationState.isLoading;
 
-  useEffect(() => {
-    if (!isLoaded || !panoramaRef.current || streetViewRef.current) return;
-
-    console.log('[StreetViewCanvas] Initializing Google Street View panorama...');
-    
-    const panorama = new google.maps.StreetViewPanorama(panoramaRef.current, {
-      position: position,
-      pov: pov,
-      zoom: zoom,
-      disableDefaultUI: true,
-      linksControl: false,
-      panControl: false,
-      enableCloseButton: false,
-      fullscreenControl: false,
-      addressControl: false,
-      showRoadLabels: false,
-    });
-    
-    console.log('[StreetViewCanvas] Panorama created with initial config:', {
-      position,
-      pov,
-      zoom
-    });
-		
-    streetViewRef.current = panorama;
-
-    panorama.addListener('status_changed', () => {
-      const status = panorama.getStatus();
-      console.log('[StreetViewCanvas] Status changed:', status);
-      if (status === 'OK') {
-        setStreetViewReady(true);
-        dispatch(setLoaded(true));
-        console.log('[StreetViewCanvas] ✓ Street View ready');
-      }
-    });
-
-    panorama.addListener('position_changed', () => {
-      const newPosition = panorama.getPosition();
-      if (newPosition) {
-        console.log('[StreetViewCanvas] Position changed (from panorama):', {
-          lat: newPosition.lat(),
-          lng: newPosition.lng()
-        });
-        dispatch(setPosition({
-          lat: newPosition.lat(),
-          lng: newPosition.lng(),
-        }));
-      }
-    });
-
-    panorama.addListener('pov_changed', () => {
-      // CRITICAL: Only dispatch if the change came from user interaction, not from Redux
-      if (isUpdatingFromReduxRef.current) {
-        console.log('[StreetViewCanvas] POV changed from Redux update - ignoring to prevent loop');
-        return;
-      }
-
-      const newPov = panorama.getPov();
-      console.log('[StreetViewCanvas] POV changed (from user interaction):', newPov);
-      dispatch(setPov({
-        heading: newPov.heading,
-        pitch: newPov.pitch,
-      }));
-    });
-
-    panorama.addListener('zoom_changed', () => {
-      const newZoom = panorama.getZoom();
-      console.log('[StreetViewCanvas] Zoom changed (from panorama):', newZoom);
-      dispatch(setZoom(newZoom));
-    });
-
-    return () => {
-      console.log('[StreetViewCanvas] Cleaning up panorama listeners');
-      if (streetViewRef.current) {
-        google.maps.event.clearInstanceListeners(streetViewRef.current);
-      }
-    };
-  }, [isLoaded, dispatch]);
-
-  // Watch for Redux pov changes and update panorama
-  useEffect(() => {
-    if (!streetViewRef.current || !streetViewReady) {
-      console.log('[StreetViewCanvas] Cannot update POV - panorama not ready:', {
-        hasPanorama: !!streetViewRef.current,
-        isReady: streetViewReady
-      });
-      return;
-    }
-
-    console.log('[StreetViewCanvas] Redux POV changed, updating panorama to:', pov);
-    
-    try {
-      // Set flag to prevent pov_changed listener from dispatching
-      isUpdatingFromReduxRef.current = true;
-      
-      streetViewRef.current.setPov(pov);
-      console.log('[StreetViewCanvas] ✓ Panorama setPov() called successfully');
-      
-      // Verify the update
-      const currentPov = streetViewRef.current.getPov();
-      console.log('[StreetViewCanvas] Current panorama POV after update:', currentPov);
-      
-      // Reset flag after a short delay to allow the event to fire
-      setTimeout(() => {
-        isUpdatingFromReduxRef.current = false;
-        console.log('[StreetViewCanvas] Reset isUpdatingFromRedux flag');
-      }, 100);
-    } catch (error) {
-      console.error('[StreetViewCanvas] Error calling setPov():', error);
-      isUpdatingFromReduxRef.current = false;
-    }
-  }, [pov, streetViewReady]);
-
-  const handleTransitionComplete = () => {
+  // Handle splash screen transition
+  const handleSplashTransitionComplete = () => {
     setShowSplash(false);
   };
 
+  // Handle going to default location
+  const handleGoToDefault = () => {
+    // Remove src parameter from URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('src');
+    window.location.href = url.toString();
+  };
+
+  // Initialize Street View when conditions are met
+  useEffect(() => {
+    // Don't initialize if splash is still showing
+    if (showSplash) {
+      return;
+    }
+
+    // Don't initialize if Google Maps isn't loaded
+    if (!isGoogleMapsLoaded) {
+      return;
+    }
+
+    // Don't initialize if container isn't ready
+    if (!containerRef.current) {
+      return;
+    }
+
+    // Don't initialize if location is still loading
+    if (locationState.isLoading) {
+      return;
+    }
+
+    // Don't initialize if there's a source location error
+    if (locationState.hasSourceError) {
+      return;
+    }
+
+    // Don't re-initialize if already created
+    if (panoramaRef.current) {
+      return;
+    }
+
+    // Use the geocoded source location or default
+    const initialPosition = locationState.sourceLocation || position;
+
+    try {
+      const panorama = new google.maps.StreetViewPanorama(containerRef.current, {
+        position: initialPosition,
+        pov: {
+          heading: INITIAL_HEADING,
+          pitch: INITIAL_PITCH,
+        },
+        zoom: zoom,
+        addressControl: false,
+        linksControl: true,
+        panControl: false,
+        enableCloseButton: false,
+        fullscreenControl: false,
+        motionTracking: false,
+        motionTrackingControl: false,
+        visible: true,
+      });
+
+      panoramaRef.current = panorama;
+
+      // Update Redux store with initial values
+      dispatch(setPosition(initialPosition));
+      dispatch(setPov({ heading: INITIAL_HEADING, pitch: INITIAL_PITCH }));
+      dispatch(setSourceAddress(locationState.sourceAddress));
+      dispatch(setDestinationLocation(locationState.destinationLocation));
+      dispatch(setDestinationAddress(locationState.destinationAddress));
+      dispatch(setLoaded(true));
+
+      // Listen for position changes
+      panorama.addListener('position_changed', () => {
+        const newPosition = panorama.getPosition();
+        if (newPosition) {
+          const pos = {
+            lat: newPosition.lat(),
+            lng: newPosition.lng(),
+          };
+          dispatch(setPosition(pos));
+        }
+      });
+
+      // Listen for POV changes
+      panorama.addListener('pov_changed', () => {
+        const newPov = panorama.getPov();
+        if (newPov) {
+          dispatch(setPov({ heading: newPov.heading, pitch: newPov.pitch }));
+        }
+      });
+
+      // Listen for zoom changes
+      panorama.addListener('zoom_changed', () => {
+        const newZoom = panorama.getZoom();
+        if (newZoom !== undefined) {
+          dispatch(setZoom(newZoom));
+        }
+      });
+    } catch (error) {
+      console.error('[StreetViewCanvas] Error initialising Street View:', error);
+      setInitializationError('Failed to initialise Street View');
+    }
+
+    return () => {
+      if (panoramaRef.current) {
+        google.maps.event.clearInstanceListeners(panoramaRef.current);
+      }
+    };
+  }, [
+    showSplash,
+    isGoogleMapsLoaded,
+    locationState.isLoading,
+    locationState.sourceLocation,
+    locationState.hasSourceError,
+    locationState.sourceAddress,
+    locationState.destinationLocation,
+    locationState.destinationAddress,
+    dispatch,
+    position,
+    zoom,
+  ]);
+
+  // Update panorama when position changes externally
+  useEffect(() => {
+    if (panoramaRef.current && position) {
+      const currentPos = panoramaRef.current.getPosition();
+      if (
+        !currentPos ||
+        Math.abs(currentPos.lat() - position.lat) > 0.00001 ||
+        Math.abs(currentPos.lng() - position.lng) > 0.00001
+      ) {
+        panoramaRef.current.setPosition(position);
+      }
+    }
+  }, [position]);
+
+  // Update panorama when POV changes externally
+  useEffect(() => {
+    if (panoramaRef.current && pov) {
+      const currentPov = panoramaRef.current.getPov();
+      if (
+        Math.abs(currentPov.heading - pov.heading) > 0.1 ||
+        Math.abs(currentPov.pitch - pov.pitch) > 0.1
+      ) {
+        panoramaRef.current.setPov(pov);
+      }
+    }
+  }, [pov]);
+
+  // Show splash screen while loading
+  if (showSplash) {
+    return (
+      <SplashScreen 
+        isLoading={isLoading} 
+        onTransitionComplete={handleSplashTransitionComplete}
+      />
+    );
+  }
+
+  // Show error page for source location geocoding failures
+  if (locationState.hasSourceError && locationState.attemptedSourceLocation) {
+    return (
+      <LocationErrorPage
+        attemptedLocation={locationState.attemptedSourceLocation}
+        errorMessage={locationState.error || 'Unknown error'}
+        onGoToDefault={handleGoToDefault}
+      />
+    );
+  }
+
   if (loadError) {
     return (
-      <div className="w-full h-screen flex items-center justify-center bg-white p-4">
-        <Alert variant="destructive" className="max-w-md">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error Loading Google Maps</AlertTitle>
-          <AlertDescription>
-            {loadError.message}
-            <br />
-            <br />
-            Please add your Google Maps API key to the <code className="bg-slate-100 px-1 py-0.5 rounded">.env</code> file:
-            <br />
-            <code className="bg-slate-100 px-2 py-1 rounded block mt-2 text-xs">
-              VITE_GOOGLE_MAPS_API_KEY=your_api_key_here
-            </code>
-          </AlertDescription>
-        </Alert>
+      <div className="flex items-center justify-center w-full h-full bg-white">
+        <div className="text-center p-8">
+          <h2 className="text-2xl font-light text-slate-900 mb-4">Error Loading Google Maps</h2>
+          <p className="text-slate-600 font-light">{loadError.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (initializationError) {
+    return (
+      <div className="flex items-center justify-center w-full h-full bg-white">
+        <div className="text-center p-8">
+          <h2 className="text-2xl font-light text-slate-900 mb-4">Initialisation Error</h2>
+          <p className="text-slate-600 font-light mb-6">{initializationError}</p>
+          <button
+            onClick={handleGoToDefault}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl"
+          >
+            Go to Default Location
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <>
-      {showSplash && (
-        <SplashScreen 
-          isLoading={!streetViewReady} 
-          onTransitionComplete={handleTransitionComplete}
-        />
-      )}
+    <div className="relative w-full h-full">
       <div 
-        ref={panoramaRef} 
-        className="w-full h-screen"
-        style={{ position: 'relative' }}
+        ref={containerRef} 
+        className="absolute inset-0 w-full h-full"
+        style={{ zIndex: 0 }}
       />
-      {!showSplash && <MotionTrackingOverlay />}
-    </>
+      {isVideoOverlayEnabled && (
+        <div style={{ zIndex: 10 }}>
+          <MotionTrackingOverlay panoramaRef={panoramaRef} />
+        </div>
+      )}
+      
+      {/* Location Info Overlay */}
+      {(locationState.sourceAddress || locationState.destinationAddress) && (
+        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm text-slate-900 p-4 rounded-xl shadow-lg border border-slate-200 max-w-md" style={{ zIndex: 20 }}>
+          {locationState.sourceAddress && (
+            <div className="mb-2">
+              <span className="font-medium">Current: </span>
+              <span className="text-sm font-light">{locationState.sourceAddress}</span>
+            </div>
+          )}
+          {locationState.destinationAddress && (
+            <div>
+              <span className="font-medium">Destination: </span>
+              <span className="text-sm font-light">{locationState.destinationAddress}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };

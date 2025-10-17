@@ -11,6 +11,7 @@ export const useGoogleMaps = () => {
   useEffect(() => {
     // If already loaded, just update state
     if (window.google && window.google.maps) {
+      console.log('[useGoogleMaps] Google Maps already loaded');
       isGoogleMapsLoaded = true;
       setIsLoaded(true);
       return;
@@ -18,8 +19,10 @@ export const useGoogleMaps = () => {
 
     // If currently loading, wait for it
     if (isLoadingGoogleMaps) {
+      console.log('[useGoogleMaps] Google Maps currently loading, waiting...');
       const checkInterval = setInterval(() => {
         if (window.google && window.google.maps) {
+          console.log('[useGoogleMaps] Google Maps loaded (from waiting)');
           isGoogleMapsLoaded = true;
           setIsLoaded(true);
           clearInterval(checkInterval);
@@ -32,6 +35,7 @@ export const useGoogleMaps = () => {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
     if (!apiKey || apiKey === 'your_api_key_here') {
+      console.error('[useGoogleMaps] Google Maps API key not configured');
       setLoadError(new Error('Google Maps API key not configured'));
       return;
     }
@@ -42,9 +46,11 @@ export const useGoogleMaps = () => {
     );
 
     if (existingScript) {
+      console.log('[useGoogleMaps] Script exists in DOM, waiting for load...');
       // Script exists, wait for it to load
       const checkLoaded = setInterval(() => {
         if (window.google && window.google.maps) {
+          console.log('[useGoogleMaps] Google Maps loaded (from existing script)');
           isGoogleMapsLoaded = true;
           setIsLoaded(true);
           clearInterval(checkLoaded);
@@ -55,6 +61,7 @@ export const useGoogleMaps = () => {
     }
 
     // Mark as loading
+    console.log('[useGoogleMaps] Starting to load Google Maps API...');
     isLoadingGoogleMaps = true;
 
     const script = document.createElement('script');
@@ -63,12 +70,14 @@ export const useGoogleMaps = () => {
     script.defer = true;
 
     script.onload = () => {
+      console.log('[useGoogleMaps] Google Maps API loaded successfully');
       isGoogleMapsLoaded = true;
       isLoadingGoogleMaps = false;
       setIsLoaded(true);
     };
 
     script.onerror = () => {
+      console.error('[useGoogleMaps] Failed to load Google Maps API');
       isLoadingGoogleMaps = false;
       setLoadError(new Error('Failed to load Google Maps API'));
     };

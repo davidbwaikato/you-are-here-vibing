@@ -12,6 +12,12 @@ interface StreetViewState {
   zoom: number;
   isLoaded: boolean;
   isVideoOverlayEnabled: boolean;
+  destinationLocation: {
+    lat: number;
+    lng: number;
+  } | null;
+  sourceAddress: string | null;
+  destinationAddress: string | null;
 }
 
 const initialState: StreetViewState = {
@@ -26,6 +32,9 @@ const initialState: StreetViewState = {
   zoom: 1,
   isLoaded: false,
   isVideoOverlayEnabled: true,
+  destinationLocation: null,
+  sourceAddress: null,
+  destinationAddress: null,
 };
 
 const streetViewSlice = createSlice({
@@ -57,8 +66,32 @@ const streetViewSlice = createSlice({
       state.isVideoOverlayEnabled = action.payload;
       console.log('[Redux Reducer] New isVideoOverlayEnabled state:', state.isVideoOverlayEnabled);
     },
+    setDestinationLocation: (state, action: PayloadAction<{ lat: number; lng: number } | null>) => {
+      console.log('[Redux Reducer] setDestinationLocation called with:', action.payload);
+      state.destinationLocation = action.payload;
+      console.log('[Redux Reducer] New destinationLocation state:', state.destinationLocation);
+    },
+    setSourceAddress: (state, action: PayloadAction<string | null>) => {
+      console.log('[Redux Reducer] setSourceAddress called with:', action.payload);
+      state.sourceAddress = action.payload;
+      console.log('[Redux Reducer] New sourceAddress state:', state.sourceAddress);
+    },
+    setDestinationAddress: (state, action: PayloadAction<string | null>) => {
+      console.log('[Redux Reducer] setDestinationAddress called with:', action.payload);
+      state.destinationAddress = action.payload;
+      console.log('[Redux Reducer] New destinationAddress state:', state.destinationAddress);
+    },
   },
 });
 
-export const { setPosition, setPov, setZoom, setLoaded, setVideoOverlayEnabled } = streetViewSlice.actions;
+export const { 
+  setPosition, 
+  setPov, 
+  setZoom, 
+  setLoaded, 
+  setVideoOverlayEnabled,
+  setDestinationLocation,
+  setSourceAddress,
+  setDestinationAddress,
+} = streetViewSlice.actions;
 export default streetViewSlice.reducer;
