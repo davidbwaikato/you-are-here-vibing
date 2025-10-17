@@ -17,6 +17,7 @@ interface TrackingControlsProps {
   webglContextLost: boolean;
   isInitializingModels: boolean;
   isAccessingCamera: boolean;
+  isReleasingCamera: boolean;
   onToggleTracking: () => void;
   onToggleSkeletonVisibility: () => void;
   onToggleVideoOverlay: () => void;
@@ -37,6 +38,7 @@ export const TrackingControls = ({
   webglContextLost,
   isInitializingModels,
   isAccessingCamera,
+  isReleasingCamera,
   onToggleTracking,
   onToggleSkeletonVisibility,
   onToggleVideoOverlay,
@@ -83,7 +85,7 @@ export const TrackingControls = ({
         trackingButtonRef.current.style.minWidth = `${width}px`;
       }
     }
-  }, [isTrackingEnabled, isInitializingModels, isAccessingCamera, webglContextLost]);
+  }, [isTrackingEnabled, isInitializingModels, isAccessingCamera, isReleasingCamera, webglContextLost]);
 
   useEffect(() => {
     if (skeletonButtonRef.current) {
@@ -109,15 +111,14 @@ export const TrackingControls = ({
     return angle.toFixed(1);
   };
 
-	const formatAngleClockWisePos = (angle: number) => {
-		const neg_angle = -1 * angle;
+  const formatAngleClockWisePos = (angle: number) => {
+    const neg_angle = -1 * angle;
 
     const formatter = new Intl.NumberFormat(undefined, {
         signDisplay: 'always'
     });
     return formatter.format(neg_angle.toFixed(1));		
   };
-
 
   const formatFps = (fps: number) => {
     return fps.toFixed(1);
@@ -129,6 +130,9 @@ export const TrackingControls = ({
     }
     if (isAccessingCamera) {
       return 'Accessing Camera...';
+    }
+    if (isReleasingCamera) {
+      return 'Releasing Camera...';
     }
     return isTrackingEnabled ? 'Tracking Active' : 'Tracking Paused';
   };
@@ -208,7 +212,7 @@ export const TrackingControls = ({
             onClick={onToggleTracking}
             variant={isTrackingEnabled ? "default" : "secondary"}
             className="justify-start"
-            disabled={!isCameraActive || !isInitialized || webglContextLost || isInitializingModels || isAccessingCamera}
+            disabled={webglContextLost || isInitializingModels || isAccessingCamera || isReleasingCamera}
           >
             <Activity className="w-4 h-4 mr-2" />
             {getTrackingButtonText()}

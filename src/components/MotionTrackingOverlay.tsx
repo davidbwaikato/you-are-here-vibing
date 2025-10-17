@@ -19,8 +19,14 @@ export const MotionTrackingOverlay = () => {
   
   const { pov, isVideoOverlayEnabled } = useSelector((state: RootState) => state.streetView);
   
-  // Initialize camera
-  const { videoRef, cameraError, isCameraActive, isAccessingCamera } = useCamera();
+  // Initialize camera with dynamic control
+  const { 
+    videoRef, 
+    error: cameraError, 
+    isCameraActive, 
+    isAccessingCamera,
+    isReleasingCamera,
+  } = useCamera(isTrackingEnabled);
   
   // Initialize canvas system
   const {
@@ -50,6 +56,7 @@ export const MotionTrackingOverlay = () => {
     videoElement: videoRef.current,
     detect,
     onShoulderAngleChange: setShoulderAngle,
+    canvasElement: canvasRef.current,
   });
   
   // Segmentation loop with FPS tracking (independent from detection)
@@ -152,9 +159,14 @@ export const MotionTrackingOverlay = () => {
       return;
     }
     
+    if (isAccessingCamera || isReleasingCamera) {
+      console.warn('[Tracking] Cannot toggle - camera operation in progress');
+      return;
+    }
+    
     setIsTrackingEnabled(prev => {
       const newState = !prev;
-      console.log('[Tracking] Toggle:', newState ? 'ON' : 'OFF');
+      console.log('[Tracking] Toggle:', newState ? 'ON (will acquire camera)' : 'OFF (will release camera)');
       
       if (!newState) {
         clearDetectionCache();
@@ -219,6 +231,7 @@ export const MotionTrackingOverlay = () => {
         webglContextLost={webglContextLost}
         isInitializingModels={isInitializing}
         isAccessingCamera={isAccessingCamera}
+        isReleasingCamera={isReleasingCamera}
         onToggleTracking={toggleTracking}
         onToggleSkeletonVisibility={toggleSkeletonVisibility}
         onToggleVideoOverlay={toggleVideoOverlay}

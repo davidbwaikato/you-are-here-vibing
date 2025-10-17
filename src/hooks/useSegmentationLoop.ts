@@ -42,6 +42,14 @@ export const useSegmentationLoop = ({
   const FPS_SAMPLE_SIZE = 10;
   const segmentationCountRef = useRef(0);
 
+  // Clear canvas when tracking is disabled or overlay is disabled
+  useEffect(() => {
+    if ((!isTrackingEnabled || !isVideoOverlayEnabled) && segmentationCanvas && segmentationCtx) {
+      segmentationCtx.clearRect(0, 0, segmentationCanvas.width, segmentationCanvas.height);
+      console.log('[Segmentation] Canvas cleared - tracking or overlay disabled');
+    }
+  }, [isTrackingEnabled, isVideoOverlayEnabled, segmentationCanvas, segmentationCtx]);
+
   useEffect(() => {
     // Clear any existing interval first
     if (segmentationIntervalRef.current) {
@@ -56,12 +64,6 @@ export const useSegmentationLoop = ({
         isTrackingEnabled,
         isVideoOverlayEnabled
       });
-      
-      // Clear the segmentation canvas to remove frozen frames
-      if (segmentationCanvas && segmentationCtx) {
-        segmentationCtx.clearRect(0, 0, segmentationCanvas.width, segmentationCanvas.height);
-        console.log('[Segmentation] Canvas cleared to prevent frozen frames');
-      }
       
       setSegmentationFps(0);
       segmentationFrameTimesRef.current = [];

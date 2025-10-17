@@ -19,6 +19,7 @@ interface UseDetectionLoopProps {
   videoElement: HTMLVideoElement | null;
   detect: () => Promise<any>;
   onShoulderAngleChange: (angle: number | null) => void;
+  canvasElement: HTMLCanvasElement | null;
 }
 
 export const useDetectionLoop = ({
@@ -28,6 +29,7 @@ export const useDetectionLoop = ({
   videoElement,
   detect,
   onShoulderAngleChange,
+  canvasElement,
 }: UseDetectionLoopProps) => {
   const dispatch = useDispatch();
   
@@ -54,6 +56,17 @@ export const useDetectionLoop = ({
   const detectionFrameTimesRef = useRef<number[]>([]);
   const FPS_SAMPLE_SIZE = 10;
   const detectionCountRef = useRef(0);
+
+  // Clear canvas when tracking is disabled
+  useEffect(() => {
+    if (!isTrackingEnabled && canvasElement) {
+      const ctx = canvasElement.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        console.log('[Detection] Canvas cleared - tracking disabled');
+      }
+    }
+  }, [isTrackingEnabled, canvasElement]);
 
   useEffect(() => {
     // Clear any existing interval first
