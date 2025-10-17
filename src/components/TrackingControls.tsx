@@ -1,4 +1,5 @@
-import { Camera, CameraOff, Compass, RotateCw, Eye, EyeOff, Video, VideoOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Activity, Eye, EyeOff, Video, VideoOff, AlertTriangle } from 'lucide-react';
 
 interface TrackingControlsProps {
   cameraError: string | null;
@@ -13,6 +14,7 @@ interface TrackingControlsProps {
   detectionFps: number;
   segmentationFps: number;
   renderFps: number;
+  webglContextLost: boolean;
   onToggleTracking: () => void;
   onToggleSkeletonVisibility: () => void;
   onToggleVideoOverlay: () => void;
@@ -30,112 +32,122 @@ export const TrackingControls = ({
   heading,
   detectionFps,
   segmentationFps,
-  //renderFps,
+  renderFps,
+  webglContextLost,
   onToggleTracking,
   onToggleSkeletonVisibility,
   onToggleVideoOverlay,
 }: TrackingControlsProps) => {
+  const formatAngle = (angle: number) => {
+    return angle.toFixed(1);
+  };
+
   return (
-    <>
-      {/* Left Side - Information Displays */}
-      <div className="fixed top-4 left-4 z-50 flex flex-col gap-3">
-        {/* POV Heading Display */}
-        <div className="w-48 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full pointer-events-none">
-          <Compass className="w-4 h-4 text-blue-400 flex-shrink-0" />
-          <span className="text-xs text-blue-400 font-mono">
-            Heading: {heading.toFixed(1)}°
-          </span>
+    <div className="fixed top-4 left-4 right-4 z-50 pointer-events-none">
+      <div className="flex justify-between items-start gap-4">
+        {/* Left side - Information displays */}
+        <div className="flex flex-col gap-2 pointer-events-auto">
+          {/* Error Messages */}
+          {cameraError && (
+            <div className="bg-red-500/90 text-white px-4 py-2 rounded-lg shadow-lg">
+              Camera Error: {cameraError}
+            </div>
+          )}
+          
+          {humanError && (
+            <div className="bg-red-500/90 text-white px-4 py-2 rounded-lg shadow-lg">
+              Detection Error: {humanError}
+            </div>
+          )}
+
+          {/* WebGL Context Lost Warning */}
+          {webglContextLost && (
+            <div className="bg-orange-500/90 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              <span>WebGL Context Lost - Restoring...</span>
+            </div>
+          )}
+
+          {/* POV Heading Display */}
+          {isCameraActive && isInitialized && (
+            <div className="bg-black/70 text-white px-4 py-2 rounded-lg shadow-lg">
+              <div className="text-sm font-medium">
+                POV Heading: {formatAngle(heading)}°
+              </div>
+            </div>
+          )}
+
+          {/* Shoulder Rotation Display */}
+          {isCameraActive && isInitialized && shoulderAngle !== null && (
+            <div className="bg-black/70 text-white px-4 py-2 rounded-lg shadow-lg">
+              <div className="text-sm font-medium">
+                Shoulder Rotation: {formatAngle(shoulderAngle)}°
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Shoulder Rotation Display */}
-        <div className="w-48 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full pointer-events-none">
-          <RotateCw className="w-4 h-4 text-amber-400 flex-shrink-0" />
-          <span className="text-xs text-amber-400 font-mono">
-            Swivel: {shoulderAngle !== null ? `${shoulderAngle.toFixed(1)}°` : '--'}
-          </span>
-        </div>
-      </div>
+        {/* Right side - Toggle controls */}
+        <div className="flex flex-col gap-2 pointer-events-auto">
+          {/* Tracking Status Button */}
+          <Button
+            onClick={onToggleTracking}
+            variant={isTrackingEnabled ? "default" : "secondary"}
+            className="w-52 justify-start"
+            disabled={!isCameraActive || !isInitialized || webglContextLost}
+          >
+            <Activity className="w-4 h-4 mr-2" />
+            {isTrackingEnabled ? 'Tracking Active' : 'Tracking Paused'}
+          </Button>
 
-      {/* Right Side - Toggle Buttons */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-3">
-        {/* Tracking Status Toggle Button */}
-        <button
-          onClick={onToggleTracking}
-          className="w-52 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
-        >
-          {cameraError || humanError ? (
-            <>
-              <CameraOff className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <span className="text-xs text-red-400">Camera Error</span>
-            </>
-          ) : isCameraActive && isInitialized ? (
-            isTrackingEnabled ? (
-              <>
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0" />
-                <Camera className="w-4 h-4 text-green-400 flex-shrink-0" />
-                <span className="text-xs text-green-400">Tracking Active</span>
-              </>
+          {/* Skeleton Visibility Button */}
+          <Button
+            onClick={onToggleSkeletonVisibility}
+            variant={isSkeletonVisible ? "default" : "secondary"}
+            className="w-52 justify-start"
+            disabled={!isCameraActive || !isInitialized}
+          >
+            {isSkeletonVisible ? (
+              <Eye className="w-4 h-4 mr-2" />
             ) : (
-              <>
-                <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0" />
-                <CameraOff className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span className="text-xs text-gray-400">Tracking Paused</span>
-              </>
-            )
-          ) : (
-            <>
-              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse flex-shrink-0" />
-              <span className="text-xs text-yellow-400">Initializing...</span>
-            </>
-          )}
-        </button>
+              <EyeOff className="w-4 h-4 mr-2" />
+            )}
+            <span className="flex-1 text-left">
+              {isSkeletonVisible ? 'Hide Skeleton' : 'Show Skeleton'}
+            </span>
+            <span className="text-xs opacity-70 ml-2">
+              {detectionFps > 0 ? `${detectionFps.toFixed(1)}/sec` : '0.0/sec'}
+            </span>
+          </Button>
 
-        {/* Video Overlay Toggle Button */}
-        <button
-          onClick={onToggleVideoOverlay}
-          className="w-52 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
-        >
-          {isVideoOverlayEnabled ? (
-            <>
-              <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse flex-shrink-0" />
-              <Video className="w-4 h-4 text-purple-400 flex-shrink-0" />
-              <span className="text-xs text-purple-400 font-mono">
-                Overlay: {segmentationFps.toFixed(1)}/sec
-              </span>
-            </>
-          ) : (
-            <>
-              <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0" />
-              <VideoOff className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="text-xs text-gray-400">Overlay Off</span>
-            </>
-          )}
-        </button>
+          {/* Video Overlay Button */}
+          <Button
+            onClick={onToggleVideoOverlay}
+            variant={isVideoOverlayEnabled ? "default" : "secondary"}
+            className="w-52 justify-start"
+            disabled={!isCameraActive || !isInitialized || webglContextLost}
+          >
+            {isVideoOverlayEnabled ? (
+              <Video className="w-4 h-4 mr-2" />
+            ) : (
+              <VideoOff className="w-4 h-4 mr-2" />
+            )}
+            <span className="flex-1 text-left">
+              {isVideoOverlayEnabled ? 'Overlay On' : 'Overlay Off'}
+            </span>
+            <span className="text-xs opacity-70 ml-2">
+              {segmentationFps > 0 ? `${segmentationFps.toFixed(1)}/sec` : '0.0/sec'}
+            </span>
+          </Button>
 
-        {/* Skeleton Visibility Toggle Button */}
-        <button
-          onClick={onToggleSkeletonVisibility}
-          className="w-52 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-black/70 transition-colors cursor-pointer"
-        >
-          {isSkeletonVisible ? (
-            <>
-              <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse flex-shrink-0" />
-              <Eye className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-              <span className="text-xs text-indigo-400 font-mono">
-                Skeleton: {detectionFps.toFixed(1)}/sec
-              </span>
-            </>
-          ) : (
-            <>
-              <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0" />
-              <EyeOff className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="text-xs text-gray-400 font-mono">
-                Skeleton: {detectionFps.toFixed(1)}/sec
-              </span>
-            </>
+          {/* Render FPS Display */}
+          {isCameraActive && isInitialized && (
+            <div className="bg-black/70 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+              Render: {renderFps > 0 ? `${renderFps.toFixed(1)}/sec` : '0.0/sec'}
+            </div>
           )}
-        </button>
+        </div>
       </div>
-    </>
+    </div>
   );
 };

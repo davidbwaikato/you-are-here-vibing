@@ -8,73 +8,75 @@ export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const initHuman = async () => {
-      try {
-        console.log('[Human.js] Starting initialization...');
-        
-        // Dynamically import human.js
-        if (!Human) {
-          console.log('[Human.js] Importing module...');
-          const module = await import('@vladmandic/human');
-          Human = module.default || module.Human;
-          console.log('[Human.js] Module imported successfully');
-        }
-
-        const config = {
-          modelBasePath: "https://raw.githubusercontent.com/vladmandic/human-models/refs/heads/main/models/",
-          face: {
-            enabled: true,
-            detector: { enabled: true, rotation: false },
-            mesh: { enabled: false },
-            iris: { enabled: false },
-            description: { enabled: false },
-            emotion: { enabled: false },
-          },
-          body: {
-            enabled: true,
-            modelPath: 'blazepose-full.json',
-            maxDetected: 1,
-          },
-          hand: {
-            enabled: true,
-          },
-          gesture: {
-            enabled: true,
-          },
-          segmentation: {
-            enabled: true,
-            modelPath: 'selfie.json',
-            mode: 'default',
-          },
-          filter: {
-            enabled: true,
-            equalization: false,
-          },
-        };
-
-        console.log('[Human.js] Creating instance with BlazePose + Segmentation config:', config);
-        humanRef.current = new Human(config);
-        
-        console.log('[Human.js] Loading models (BlazePose + Selfie segmentation)...');
-        await humanRef.current.load();
-        console.log('[Human.js] Models loaded successfully');
-        
-        console.log('[Human.js] Warming up...');
-        await humanRef.current.warmup();
-        console.log('[Human.js] Warmup complete');
-        
-        setIsInitialized(true);
-        console.log('[Human.js] BlazePose + Segmentation initialization complete ✓');
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to initialize Human.js';
-        setError(errorMsg);
-        console.error('[Human.js] Initialization error:', err);
+  const initHuman = useCallback(async () => {
+    try {
+      console.log('[Human.js] Starting initialization...');
+      
+      // Dynamically import human.js
+      if (!Human) {
+        console.log('[Human.js] Importing module...');
+        const module = await import('@vladmandic/human');
+        Human = module.default || module.Human;
+        console.log('[Human.js] Module imported successfully');
       }
-    };
 
-    initHuman();
+      const config = {
+        modelBasePath: "https://raw.githubusercontent.com/vladmandic/human-models/refs/heads/main/models/",
+        face: {
+          enabled: true,
+          detector: { enabled: true, rotation: false },
+          mesh: { enabled: false },
+          iris: { enabled: false },
+          description: { enabled: false },
+          emotion: { enabled: false },
+        },
+        body: {
+          enabled: true,
+          modelPath: 'blazepose-full.json',
+          maxDetected: 1,
+        },
+        hand: {
+          enabled: true,
+        },
+        gesture: {
+          enabled: true,
+        },
+        segmentation: {
+          enabled: true,
+          modelPath: 'selfie.json',
+          mode: 'default',
+        },
+        filter: {
+          enabled: true,
+          equalization: false,
+        },
+      };
+
+      console.log('[Human.js] Creating instance with BlazePose + Segmentation config:', config);
+      humanRef.current = new Human(config);
+      
+      console.log('[Human.js] Loading models (BlazePose + Selfie segmentation)...');
+      await humanRef.current.load();
+      console.log('[Human.js] Models loaded successfully');
+      
+      console.log('[Human.js] Warming up...');
+      await humanRef.current.warmup();
+      console.log('[Human.js] Warmup complete');
+      
+      setIsInitialized(true);
+      setError(null);
+      console.log('[Human.js] BlazePose + Segmentation initialization complete ✓');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to initialize Human.js';
+      setError(errorMsg);
+      setIsInitialized(false);
+      console.error('[Human.js] Initialization error:', err);
+    }
   }, []);
+
+  useEffect(() => {
+    initHuman();
+  }, [initHuman]);
 
   const detect = useCallback(async () => {
     if (!humanRef.current || !videoElement || !isInitialized) {
@@ -104,5 +106,11 @@ export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
     }
   }, [videoElement, isInitialized]);
 
-  return { human: humanRef.current, detect, segment, isInitialized, error };
+  const reinitialize = useCallback(async () => {
+    console.log('[Human.js] Reinitializing after context restoration...');
+    setIsInitialized(false);
+    await initHuman();
+  }, [initHuman]);
+
+  return { human: humanRef.current, detect, segment, isInitialized, error, reinitialize };
 };
