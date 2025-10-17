@@ -1,83 +1,64 @@
-// Custom hook for camera initialization and management
-
 import { useEffect, useRef, useState } from 'react';
 
 export const useCamera = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const isInitializingRef = useRef(false);
-  
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isAccessingCamera, setIsAccessingCamera] = useState(false);
 
   useEffect(() => {
-    if (isInitializingRef.current || streamRef.current) {
-      return;
-    }
-
-    isInitializingRef.current = true;
-    console.log('[Camera] Starting initialization...');
+    let stream: MediaStream | null = null;
 
     const initCamera = async () => {
       try {
-        console.log('[Camera] Requesting media stream...');
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
+        setIsAccessingCamera(true);
+        console.log('[Camera] Requesting camera access...');
+        
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
+            facingMode: 'user',
             width: { ideal: 1280 },
             height: { ideal: 720 },
-            facingMode: 'user',
           },
-          audio: false,
         });
 
-        console.log('[Camera] Media stream obtained');
-        streamRef.current = mediaStream;
+        console.log('[Camera] Camera access granted');
 
         if (videoRef.current) {
-          console.log('[Camera] Setting video srcObject...');
-          videoRef.current.srcObject = mediaStream;
+          videoRef.current.srcObject = stream;
           
-          videoRef.current.onloadedmetadata = async () => {
-            try {
-              console.log('[Camera] Video metadata loaded, starting playback...');
-              if (videoRef.current) {
-                await videoRef.current.play();
-                console.log('[Camera] Video playing ✓');
-                setIsCameraActive(true);
-              }
-            } catch (playError) {
-              console.error('[Camera] Video play error:', playError);
-              setCameraError('Failed to start video playback');
+          await new Promise<void>((resolve) => {
+            if (videoRef.current) {
+              videoRef.current.onloadedmetadata = () => {
+                videoRef.current?.play();
+                resolve();
+              };
             }
-          };
+          });
+
+          console.log('[Camera] Video stream ready');
+          setIsCameraActive(true);
+          setIsAccessingCamera(false);
+          setError(null);
         }
       } catch (err) {
-        setCameraError(err instanceof Error ? err.message : 'Failed to access camera');
-        console.error('[Camera] Access error:', err);
-      } finally {
-        isInitializingRef.current = false;
+        const errorMsg = err instanceof Error ? err.message : 'Failed to access camera';
+        setError(errorMsg);
+        setIsCameraActive(false);
+        setIsAccessingCamera(false);
+        console.error('[Camera] Error:', err);
       }
     };
 
     initCamera();
 
     return () => {
-      console.log('[Camera] Cleaning up...');
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        console.log('[Camera] Stream stopped');
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-        videoRef.current.onloadedmetadata = null;
-      }
-      isInitializingRef.current = false;
     };
   }, []);
 
-  return {
-    videoRef,
-    cameraError,
-    isCameraActive,
-  };
+  return { videoRef, error, isCameraActive, isAccessingCamera };
 };

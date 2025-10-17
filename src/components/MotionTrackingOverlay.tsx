@@ -20,7 +20,7 @@ export const MotionTrackingOverlay = () => {
   const { pov, isVideoOverlayEnabled } = useSelector((state: RootState) => state.streetView);
   
   // Initialize camera
-  const { videoRef, cameraError, isCameraActive } = useCamera();
+  const { videoRef, cameraError, isCameraActive, isAccessingCamera } = useCamera();
   
   // Initialize canvas system
   const {
@@ -32,7 +32,7 @@ export const MotionTrackingOverlay = () => {
   } = useCanvasSetup();
   
   // Initialize human detection
-  const { detect, segment, isInitialized, error: humanError, reinitialize } = useHumanDetection(videoRef.current);
+  const { detect, segment, isInitialized, error: humanError, reinitialize, isInitializing } = useHumanDetection(videoRef.current);
   
   // Track if we were tracking before context loss
   const wasTrackingBeforeContextLossRef = useRef(false);
@@ -216,8 +216,9 @@ export const MotionTrackingOverlay = () => {
         heading={pov.heading}
         detectionFps={detectionFps}
         segmentationFps={segmentationFps}
-        renderFps={renderFps}
         webglContextLost={webglContextLost}
+        isInitializingModels={isInitializing}
+        isAccessingCamera={isAccessingCamera}
         onToggleTracking={toggleTracking}
         onToggleSkeletonVisibility={toggleSkeletonVisibility}
         onToggleVideoOverlay={toggleVideoOverlay}

@@ -6,10 +6,12 @@ let Human: any = null;
 export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
   const humanRef = useRef<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const initHuman = useCallback(async () => {
     try {
+      setIsInitializing(true);
       console.log('[Human.js] Starting initialization...');
       
       // Dynamically import human.js
@@ -64,12 +66,14 @@ export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
       console.log('[Human.js] Warmup complete');
       
       setIsInitialized(true);
+      setIsInitializing(false);
       setError(null);
       console.log('[Human.js] BlazePose + Segmentation initialization complete ✓');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to initialize Human.js';
       setError(errorMsg);
       setIsInitialized(false);
+      setIsInitializing(false);
       console.error('[Human.js] Initialization error:', err);
     }
   }, []);
@@ -112,5 +116,5 @@ export const useHumanDetection = (videoElement: HTMLVideoElement | null) => {
     await initHuman();
   }, [initHuman]);
 
-  return { human: humanRef.current, detect, segment, isInitialized, error, reinitialize };
+  return { human: humanRef.current, detect, segment, isInitialized, isInitializing, error, reinitialize };
 };
