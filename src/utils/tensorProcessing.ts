@@ -23,7 +23,7 @@ export const processTensorToImageData = async (
     const imageDataArray = new Uint8ClampedArray(width * height * 4);
 
     const numPixels = width * height;
-		
+    
     // Process tensor data: R, G, B, A values are consecutive in the array
     for (let i = 0; i < numPixels; i++) {
       const r = rawData[i * 4];

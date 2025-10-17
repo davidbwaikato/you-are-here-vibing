@@ -117,9 +117,7 @@ export const useSegmentationLoop = ({
             videoElement.videoWidth,
             videoElement.videoHeight
           );
-
-					segmentationTensor.dispose();
-					
+          
           // CRITICAL: Check again if tracking and overlay are still enabled after async processTensorToImageData() completes
           if (!trackingEnabledAtStartRef.current || !overlayEnabledAtStartRef.current) {
             console.log('[Segmentation] State changed during processTensorToImageData() - discarding result', {
@@ -143,10 +141,6 @@ export const useSegmentationLoop = ({
       } catch (error) {
         console.error('[Segmentation] Error:', error);
       } finally {
-        // IMPORTANT: free GPU resources even on early returns/errors
-        try { segmentationTensor?.dispose?.(); } catch {}
-        try { await tf.nextFrame?.(); } catch {} // lets backend flush GL/WebGPU
-  			
         isSegmentingRef.current = false;
       }
     };

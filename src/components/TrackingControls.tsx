@@ -109,6 +109,16 @@ export const TrackingControls = ({
     return angle.toFixed(1);
   };
 
+	const formatAngleClockWisePos = (angle: number) => {
+		const neg_angle = -1 * angle;
+
+    const formatter = new Intl.NumberFormat(undefined, {
+        signDisplay: 'always'
+    });
+    return formatter.format(neg_angle.toFixed(1));		
+  };
+
+
   const formatFps = (fps: number) => {
     return fps.toFixed(1);
   };
@@ -184,7 +194,7 @@ export const TrackingControls = ({
               className="bg-black/70 text-white px-4 py-2 rounded-lg shadow-lg"
             >
               <div className="text-sm font-medium">
-                Shoulder Rotation: {shoulderAngle !== null ? `${formatAngle(shoulderAngle)}°` : '--'}
+                Shoulder Rotation: {shoulderAngle !== null ? `${formatAngleClockWisePos(shoulderAngle)}°` : '--'}
               </div>
             </div>
           )}
