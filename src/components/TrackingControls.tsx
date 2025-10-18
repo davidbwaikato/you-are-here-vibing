@@ -117,7 +117,7 @@ export const TrackingControls = ({
     const formatter = new Intl.NumberFormat(undefined, {
         signDisplay: 'always'
     });
-    return formatter.format(neg_angle.toFixed(1));		
+    return formatter.format(parseFloat(neg_angle.toFixed(1)));		
   };
 
   const formatFps = (fps: number) => {

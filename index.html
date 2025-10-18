@@ -5,9 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>You Are Here (Code Vibing with Claude Sonnet 4.5)</title>
+    <script>
+      // Load Google Maps API before anything else
+      (function() {
+        const apiKey = 'AIzaSyC3ABiQGyrZW7x8CyIcp-VpAht8251opg8';
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+        script.async = false; // Load synchronously to ensure it's available
+        script.defer = false;
+        document.head.appendChild(script);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module"  src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

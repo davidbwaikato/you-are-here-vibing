@@ -3,14 +3,18 @@ import { MapPin, Home, ExternalLink } from 'lucide-react';
 interface LocationErrorPageProps {
   attemptedLocation: string;
   errorMessage: string;
-  onGoToDefault: () => void;
 }
 
 export const LocationErrorPage = ({ 
-  attemptedLocation, 
-  onGoToDefault 
+  attemptedLocation
 }: LocationErrorPageProps) => {
   const googleMapsSearchUrl = `https://www.google.com/maps/search/${encodeURIComponent(attemptedLocation)}`;
+
+  const handleGoToDefault = () => {
+    console.log('[LocationErrorPage] Navigating to default location (Trevi Fountain)');
+    // Clear the src parameter to use default location
+    window.location.href = window.location.pathname;
+  };
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
@@ -51,7 +55,7 @@ export const LocationErrorPage = ({
         <div className="space-y-3 mb-8">
           {/* Go to Default Location Button */}
           <button
-            onClick={onGoToDefault}
+            onClick={handleGoToDefault}
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
           >
             <Home className="w-5 h-5" />

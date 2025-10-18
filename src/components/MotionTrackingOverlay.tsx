@@ -10,7 +10,11 @@ import { useSegmentationLoop } from '@/hooks/useSegmentationLoop';
 import { useRenderLoop } from '@/hooks/useRenderLoop';
 import { TrackingControls } from './TrackingControls';
 
-export const MotionTrackingOverlay = () => {
+interface MotionTrackingOverlayProps {
+  panoramaRef: React.MutableRefObject<google.maps.StreetViewPanorama | null>;
+}
+
+export const MotionTrackingOverlay = ({ panoramaRef }: MotionTrackingOverlayProps) => {
   const dispatch = useDispatch();
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const [isSkeletonVisible, setIsSkeletonVisible] = useState(false);
@@ -76,7 +80,7 @@ export const MotionTrackingOverlay = () => {
   });
   
   // Render loop with FPS tracking
-  const { renderFps } = useRenderLoop({
+  useRenderLoop({
     isInitialized,
     isCameraActive,
     isTrackingEnabled: isTrackingEnabled && !webglContextLost,

@@ -13,9 +13,14 @@ interface LocationState {
   hasSourceError: boolean;
 }
 
-const DEFAULT_LOCATION: LatLng = {
+const DEFAULT_SOURCE_LOCATION: LatLng = {
   lat: 41.9007576,
   lng: 12.4832866,
+};
+
+const DEFAULT_DESTINATION_LOCATION: LatLng = {
+  lat: 41.9058403,
+  lng: 12.4822975,
 };
 
 /**
@@ -25,34 +30,38 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
   const [state, setState] = useState<LocationState>({
     isLoading: false,
     error: null,
-    sourceLocation: DEFAULT_LOCATION,
-    destinationLocation: null,
+    sourceLocation: DEFAULT_SOURCE_LOCATION,
+    destinationLocation: DEFAULT_DESTINATION_LOCATION,
     sourceAddress: 'Trevi Fountain, Rome, Italy',
-    destinationAddress: null,
+    destinationAddress: 'The Spanish Steps, Rome, Italy',
     attemptedSourceLocation: null,
     hasSourceError: false,
   });
 
   useEffect(() => {
+    console.log('[useLocationParams] Effect triggered - isGoogleMapsLoaded:', isGoogleMapsLoaded);
+    
     if (!isGoogleMapsLoaded) {
       console.log('[useLocationParams] Waiting for Google Maps to load');
       return;
     }
 
+    console.log('[useLocationParams] Google Maps is loaded, processing locations...');
+
     const processLocations = async () => {
       const params = parseLocationParams();
       console.log('[useLocationParams] Processing URL params:', params);
       
-      // If no src parameter, use default location
+      // If no parameters, use default locations
       if (!params.src && !params.dst) {
-        console.log('[useLocationParams] No params, using default location');
+        console.log('[useLocationParams] No params, using default locations');
         setState({
           isLoading: false,
           error: null,
-          sourceLocation: DEFAULT_LOCATION,
-          destinationLocation: null,
+          sourceLocation: DEFAULT_SOURCE_LOCATION,
+          destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
-          destinationAddress: null,
+          destinationAddress: 'The Spanish Steps, Rome, Italy',
           attemptedSourceLocation: null,
           hasSourceError: false,
         });
@@ -69,21 +78,34 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
 
       try {
         console.log('[useLocationParams] Starting geocoding...');
-        const results = await Promise.all([
-          params.src ? geocodeLocation(params.src) : null,
-          params.dst ? geocodeLocation(params.dst) : null,
-        ]);
+        
+        // Geocode source (or use default)
+        const srcPromise = params.src 
+          ? geocodeLocation(params.src) 
+          : Promise.resolve({ 
+              location: DEFAULT_SOURCE_LOCATION, 
+              formattedAddress: 'Trevi Fountain, Rome, Italy' 
+            });
+        
+        // Geocode destination (or use default)
+        const dstPromise = params.dst 
+          ? geocodeLocation(params.dst) 
+          : Promise.resolve({ 
+              location: DEFAULT_DESTINATION_LOCATION, 
+              formattedAddress: 'The Spanish Steps, Rome, Italy' 
+            });
 
+        const results = await Promise.all([srcPromise, dstPromise]);
         const [srcResult, dstResult] = results;
         console.log('[useLocationParams] Geocoding results:', { srcResult, dstResult });
 
         let newState: LocationState = {
           isLoading: false,
           error: null,
-          sourceLocation: DEFAULT_LOCATION,
-          destinationLocation: null,
+          sourceLocation: DEFAULT_SOURCE_LOCATION,
+          destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
-          destinationAddress: null,
+          destinationAddress: 'The Spanish Steps, Rome, Italy',
           attemptedSourceLocation: params.src || null,
           hasSourceError: false,
         };
@@ -121,10 +143,10 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         setState({
           isLoading: false,
           error: 'Failed to process locations',
-          sourceLocation: DEFAULT_LOCATION,
-          destinationLocation: null,
+          sourceLocation: DEFAULT_SOURCE_LOCATION,
+          destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
-          destinationAddress: null,
+          destinationAddress: 'The Spanish Steps, Rome, Italy',
           attemptedSourceLocation: params.src || null,
           hasSourceError: !!params.src,
         });
@@ -134,5 +156,6 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
     processLocations();
   }, [isGoogleMapsLoaded]);
 
+  console.log('[useLocationParams] Returning state:', state);
   return state;
 };

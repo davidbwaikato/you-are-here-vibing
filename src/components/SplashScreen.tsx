@@ -1,26 +1,34 @@
 import { useEffect, useState } from 'react';
-import { MapPin } from 'lucide-react';
 
 interface SplashScreenProps {
-  isLoading: boolean;
-  onTransitionComplete: () => void;
+  onComplete: () => void;
 }
 
-export const SplashScreen = ({ isLoading, onTransitionComplete }: SplashScreenProps) => {
+export const SplashScreen = ({ onComplete }: SplashScreenProps) => {
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    if (!isLoading) {
-      // Wait a moment before starting fade out
-      const timer = setTimeout(() => {
-        setFadeOut(true);
-        // Complete transition after fade animation
-        setTimeout(onTransitionComplete, 1000);
-      }, 500);
+    console.log('[SplashScreen] Mounted, will complete in 2 seconds');
+    
+    // Wait 2 seconds, then start fade out
+    const timer = setTimeout(() => {
+      console.log('[SplashScreen] Starting fade out');
+      setFadeOut(true);
+      
+      // Complete transition after fade animation (1 second)
+      setTimeout(() => {
+        console.log('[SplashScreen] Calling onComplete');
+        onComplete();
+      }, 1000);
+    }, 2000);
 
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, onTransitionComplete]);
+    return () => {
+      console.log('[SplashScreen] Unmounting');
+      clearTimeout(timer);
+    };
+  }, [onComplete]);
+
+  console.log('[SplashScreen] Rendering, fadeOut:', fadeOut);
 
   return (
     <div
@@ -33,7 +41,10 @@ export const SplashScreen = ({ isLoading, onTransitionComplete }: SplashScreenPr
         <div className="relative">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-3xl rounded-full" />
           <div className="relative bg-gradient-to-br from-blue-600 to-purple-600 p-6 rounded-2xl shadow-2xl">
-            <MapPin className="w-16 h-16 text-white" strokeWidth={1.5} />
+            <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+            </svg>
           </div>
         </div>
 
@@ -47,12 +58,12 @@ export const SplashScreen = ({ isLoading, onTransitionComplete }: SplashScreenPr
           </p>
         </div>
 
-        {/* Loading indicator - always visible to prevent layout shift */}
+        {/* Loading indicator */}
         <div className="flex flex-col items-center gap-3 mt-4">
           <div className="flex gap-2">
-            <div className={`w-2 h-2 bg-blue-600 rounded-full ${isLoading ? 'animate-bounce [animation-delay:-0.3s]' : ''}`} />
-            <div className={`w-2 h-2 bg-purple-600 rounded-full ${isLoading ? 'animate-bounce [animation-delay:-0.15s]' : ''}`} />
-            <div className={`w-2 h-2 bg-blue-600 rounded-full ${isLoading ? 'animate-bounce' : ''}`} />
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]" />
+            <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce [animation-delay:-0.15s]" />
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" />
           </div>
           <p className="text-sm text-slate-400 font-light">Loading your destination...</p>
         </div>
