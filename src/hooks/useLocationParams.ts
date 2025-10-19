@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import { parseLocationParams } from '../utils/urlParams';
 import { geocodeLocation, type LatLng } from '../services/geocoding';
 import { fetchWalkingRoute, type RouteResult } from '../services/routing';
-import { setPosition, setDestinationLocation, setSourceAddress, setDestinationAddress } from '../store/streetViewSlice';
+import { setPosition, setDestinationLocation, setSourceAddress, setDestinationAddress, setRoutePolyline } from '../store/streetViewSlice';
 
 interface LocationState {
   isInitializing: boolean;
@@ -100,7 +100,8 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         dispatch(setDestinationAddress(defaultState.destinationAddress));
         dispatch(setPosition(DEFAULT_SOURCE_LOCATION));
         dispatch(setDestinationLocation(DEFAULT_DESTINATION_LOCATION));
-        console.log('[useLocationParams] ✅ Redux store updated with default addresses');
+				dispatch(setRoutePolyline(routeResult.decodedPolyline));
+        console.log('[useLocationParams] ✅ Redux store updated with default addresses and route');
         console.log('[useLocationParams] ✅ Initialization complete');
         return;
       }
@@ -206,7 +207,9 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           } else {
             console.log('[useLocationParams] ✅ Route calculated successfully');
             newState.route = routeResult;
+						dispatch(setRoutePolyline(routeResult.decodedPolyline));
           }
+					
         }
 
         console.log('[useLocationParams] ✅ All initialization complete, ready to show main app');

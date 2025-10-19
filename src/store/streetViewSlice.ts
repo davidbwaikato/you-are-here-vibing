@@ -1,5 +1,10 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+interface LatLng {
+  lat: number;
+  lng: number;
+}
+
 interface StreetViewState {
   position: {
     lat: number;
@@ -18,6 +23,7 @@ interface StreetViewState {
   } | null;
   sourceAddress: string | null;
   destinationAddress: string | null;
+  routePolyline: LatLng[];
 }
 
 const initialState: StreetViewState = {
@@ -35,6 +41,7 @@ const initialState: StreetViewState = {
   destinationLocation: null,
   sourceAddress: null,
   destinationAddress: null,
+  routePolyline: [],
 };
 
 const streetViewSlice = createSlice({
@@ -81,6 +88,28 @@ const streetViewSlice = createSlice({
       state.destinationAddress = action.payload;
       console.log('[Redux Reducer] New destinationAddress state:', state.destinationAddress);
     },
+    setRoutePolyline: (state, action: PayloadAction<LatLng[]>) => {
+      console.log('[Redux Reducer] setRoutePolyline called with:', {
+        pointCount: action.payload.length,
+        firstPoint: action.payload[0],
+        lastPoint: action.payload[action.payload.length - 1],
+      });
+      state.routePolyline = action.payload;
+      console.log('[Redux Reducer] New routePolyline state:', {
+        totalPoints: state.routePolyline.length,
+      });
+    },
+    clearRoute: (state) => {
+      console.log('[Redux Reducer] clearRoute called');
+      state.routePolyline = [];
+      state.destinationLocation = null;
+      state.destinationAddress = null;
+      console.log('[Redux Reducer] Route cleared:', {
+        routePolyline: state.routePolyline.length,
+        destinationLocation: state.destinationLocation,
+        destinationAddress: state.destinationAddress,
+      });
+    },
   },
 });
 
@@ -93,5 +122,7 @@ export const {
   setDestinationLocation,
   setSourceAddress,
   setDestinationAddress,
+  setRoutePolyline,
+  clearRoute,
 } = streetViewSlice.actions;
 export default streetViewSlice.reducer;
