@@ -146,7 +146,7 @@ export const useDetectionLoop = ({
               baselineAngleRef.current = currentAngle;
               console.log('[Shoulder] ✓ Baseline swivel angle set:', currentAngle.toFixed(2), '°');
             }
-            
+						
             const angleDelta = currentAngle - baselineAngleRef.current;
             onShoulderAngleChange(angleDelta);
             
