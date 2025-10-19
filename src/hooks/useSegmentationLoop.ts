@@ -5,6 +5,9 @@ import {
   LOG_INTERVAL_FRAMES,
 } from '@/utils/constants';
 
+// Logging control - set to false to disable segmentation logs
+const DEBUG_SEGMENTATION = true;
+
 interface UseSegmentationLoopProps {
   isInitialized: boolean;
   isCameraActive: boolean;
@@ -46,7 +49,9 @@ export const useSegmentationLoop = ({
   useEffect(() => {
     if ((!isTrackingEnabled || !isVideoOverlayEnabled) && segmentationCanvas && segmentationCtx) {
       segmentationCtx.clearRect(0, 0, segmentationCanvas.width, segmentationCanvas.height);
-      console.log('[Segmentation] Canvas cleared - tracking or overlay disabled');
+      if (DEBUG_SEGMENTATION) {
+        console.log('[Segmentation] Canvas cleared - tracking or overlay disabled');
+      }
     }
   }, [isTrackingEnabled, isVideoOverlayEnabled, segmentationCanvas, segmentationCtx]);
 
@@ -58,12 +63,14 @@ export const useSegmentationLoop = ({
     }
 
     if (!isInitialized || !isCameraActive || !isTrackingEnabled || !isVideoOverlayEnabled) {
-      console.log('[Segmentation] Loop stopped - conditions not met:', {
-        isInitialized,
-        isCameraActive,
-        isTrackingEnabled,
-        isVideoOverlayEnabled
-      });
+      if (DEBUG_SEGMENTATION) {
+        console.log('[Segmentation] Loop stopped - conditions not met:', {
+          isInitialized,
+          isCameraActive,
+          isTrackingEnabled,
+          isVideoOverlayEnabled
+        });
+      }
       
       setSegmentationFps(0);
       segmentationFrameTimesRef.current = [];
@@ -72,7 +79,9 @@ export const useSegmentationLoop = ({
       return;
     }
 
-    console.log('[Segmentation] Starting segmentation loop...');
+    if (DEBUG_SEGMENTATION) {
+      console.log('[Segmentation] Starting segmentation loop...');
+    }
 
     const runSegmentation = async () => {
       if (isSegmentingRef.current) {
@@ -90,10 +99,12 @@ export const useSegmentationLoop = ({
 
         // CRITICAL: Check if tracking and overlay are still enabled after async segment() completes
         if (!trackingEnabledAtStartRef.current || !overlayEnabledAtStartRef.current) {
-          console.log('[Segmentation] State changed during segment() - discarding result', {
-            trackingEnabled: trackingEnabledAtStartRef.current,
-            overlayEnabled: overlayEnabledAtStartRef.current
-          });
+          if (DEBUG_SEGMENTATION) {
+            console.log('[Segmentation] State changed during segment() - discarding result', {
+              trackingEnabled: trackingEnabledAtStartRef.current,
+              overlayEnabled: overlayEnabledAtStartRef.current
+            });
+          }
           isSegmentingRef.current = false;
           return;
         }
@@ -122,10 +133,12 @@ export const useSegmentationLoop = ({
           
           // CRITICAL: Check again if tracking and overlay are still enabled after async processTensorToImageData() completes
           if (!trackingEnabledAtStartRef.current || !overlayEnabledAtStartRef.current) {
-            console.log('[Segmentation] State changed during processTensorToImageData() - discarding result', {
-              trackingEnabled: trackingEnabledAtStartRef.current,
-              overlayEnabled: overlayEnabledAtStartRef.current
-            });
+            if (DEBUG_SEGMENTATION) {
+              console.log('[Segmentation] State changed during processTensorToImageData() - discarding result', {
+                trackingEnabled: trackingEnabledAtStartRef.current,
+                overlayEnabled: overlayEnabledAtStartRef.current
+              });
+            }
             isSegmentingRef.current = false;
             return;
           }
@@ -137,7 +150,7 @@ export const useSegmentationLoop = ({
         
         segmentationCountRef.current++;
         
-        if (segmentationCountRef.current % LOG_INTERVAL_FRAMES === 0) {
+        if (DEBUG_SEGMENTATION && segmentationCountRef.current % LOG_INTERVAL_FRAMES === 0) {
           console.log('[Segmentation] Frame:', segmentationCountRef.current, 'FPS:', fps.toFixed(1));
         }
       } catch (error) {
@@ -148,13 +161,18 @@ export const useSegmentationLoop = ({
     };
 
     segmentationIntervalRef.current = setInterval(runSegmentation, SEGMENTATION_INTERVAL_MS);
-    console.log('[Segmentation] Loop started with interval:', SEGMENTATION_INTERVAL_MS, 'ms');
+    
+    if (DEBUG_SEGMENTATION) {
+      console.log('[Segmentation] Loop started with interval:', SEGMENTATION_INTERVAL_MS, 'ms');
+    }
 
     return () => {
       if (segmentationIntervalRef.current) {
         clearInterval(segmentationIntervalRef.current);
         segmentationIntervalRef.current = null;
-        console.log('[Segmentation] Loop cleanup complete');
+        if (DEBUG_SEGMENTATION) {
+          console.log('[Segmentation] Loop cleanup complete');
+        }
       }
     };
   }, [isInitialized, isCameraActive, isTrackingEnabled, isVideoOverlayEnabled, videoElement, segment, segmentationCanvas, segmentationCtx]);
@@ -174,7 +192,9 @@ export const useSegmentationLoop = ({
     // Clear the canvas when clearing cache
     if (segmentationCanvas && segmentationCtx) {
       segmentationCtx.clearRect(0, 0, segmentationCanvas.width, segmentationCanvas.height);
-      console.log('[Segmentation] Canvas cleared during cache clear');
+      if (DEBUG_SEGMENTATION) {
+        console.log('[Segmentation] Canvas cleared during cache clear');
+      }
     }
   };
 

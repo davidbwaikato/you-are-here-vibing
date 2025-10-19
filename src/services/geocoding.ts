@@ -1,73 +1,66 @@
-/**
- * Geocoding Service
- * Handles conversion of location strings to LatLng coordinates using Google Maps Geocoder
- */
-
 export interface LatLng {
   lat: number;
   lng: number;
 }
 
-export interface GeocodingResult {
+export interface GeocodeResult {
   location: LatLng;
   formattedAddress: string;
 }
 
-export interface GeocodingError {
+export interface GeocodeError {
   error: string;
-  status: string;
 }
 
 /**
- * Geocode a location string to LatLng coordinates
- * @param locationString - Address or place name to geocode
- * @returns Promise with location data or error
+ * Geocode a location string to coordinates using Google Maps Geocoding API
  */
 export const geocodeLocation = async (
   locationString: string
-): Promise<GeocodingResult | GeocodingError> => {
-  return new Promise((resolve) => {
-    if (!window.google || !window.google.maps) {
-      resolve({
-        error: 'Google Maps API not loaded',
-        status: 'ERROR',
-      });
-      return;
+): Promise<GeocodeResult | GeocodeError> => {
+  console.log('[Geocoding] 🔍 Starting geocode for:', locationString);
+  
+  if (!window.google || !window.google.maps) {
+    console.error('[Geocoding] ❌ Google Maps not loaded');
+    return { error: 'Google Maps not loaded' };
+  }
+
+  try {
+    console.log('[Geocoding] 🔧 Initializing Geocoder class...');
+    const geocoder = new google.maps.Geocoder();
+    console.log('[Geocoding] ✅ Geocoder initialized');
+
+    console.log('[Geocoding] 📡 Sending geocode request...');
+    const result = await geocoder.geocode({ address: locationString });
+    console.log('[Geocoding] 📥 Received geocode response');
+
+    if (!result.results || result.results.length === 0) {
+      console.error('[Geocoding] ❌ No results found for:', locationString);
+      return { error: `Location not found: ${locationString}` };
     }
 
-    const geocoder = new google.maps.Geocoder();
+    const location = result.results[0].geometry.location;
+    const formattedAddress = result.results[0].formatted_address;
 
-    geocoder.geocode(
-      { address: locationString },
-      (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          const location = results[0].geometry.location;
-          resolve({
-            location: {
-              lat: location.lat(),
-              lng: location.lng(),
-            },
-            formattedAddress: results[0].formatted_address,
-          });
-        } else {
-          resolve({
-            error: `Geocoding failed: ${status}`,
-            status: status,
-          });
-        }
-      }
-    );
-  });
-};
+    const geocodeResult = {
+      location: {
+        lat: location.lat(),
+        lng: location.lng(),
+      },
+      formattedAddress,
+    };
 
-/**
- * Batch geocode multiple locations
- * @param locations - Array of location strings
- * @returns Promise with array of results
- */
-export const geocodeMultipleLocations = async (
-  locations: string[]
-): Promise<(GeocodingResult | GeocodingError)[]> => {
-  const promises = locations.map((location) => geocodeLocation(location));
-  return Promise.all(promises);
+    console.log('[Geocoding] ✅ Geocode successful:', {
+      input: locationString,
+      output: formattedAddress,
+      coordinates: geocodeResult.location,
+    });
+
+    return geocodeResult;
+  } catch (error) {
+    console.error('[Geocoding] ❌ Geocoding failed:', error);
+    return { 
+      error: `Failed to geocode location: ${locationString}` 
+    };
+  }
 };

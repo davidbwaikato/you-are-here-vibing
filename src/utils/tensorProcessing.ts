@@ -1,5 +1,8 @@
 // TensorFlow.js tensor processing utilities
 
+// Logging control - set to false to disable tensor processing logs
+const DEBUG_TENSOR_PROCESSING = false;
+
 /**
  * Process segmentation tensor to ImageData for canvas rendering
  */
@@ -9,15 +12,20 @@ export const processTensorToImageData = async (
   height: number
 ): Promise<ImageData | null> => {
   try {
-    console.log('[Segmentation] Processing tensor:', {
-      shape: tensor.shape,
-      dtype: tensor.dtype,
-      targetSize: `${width}x${height}`
-    });
+    if (DEBUG_TENSOR_PROCESSING) {
+      console.log('[Segmentation] Processing tensor:', {
+        shape: tensor.shape,
+        dtype: tensor.dtype,
+        targetSize: `${width}x${height}`
+      });
+    }
 
     // Get raw tensor data as Float32Array
     const rawData = await tensor.data();
-    console.log('[Segmentation] Raw data length:', rawData.length);
+    
+    if (DEBUG_TENSOR_PROCESSING) {
+      console.log('[Segmentation] Raw data length:', rawData.length);
+    }
 
     // Create Uint8ClampedArray for ImageData (RGBA format)
     const imageDataArray = new Uint8ClampedArray(width * height * 4);
@@ -39,11 +47,14 @@ export const processTensorToImageData = async (
 
     // Create ImageData from processed array
     const imageData = new ImageData(imageDataArray, width, height);
-    console.log('[Segmentation] ImageData created:', {
-      width: imageData.width,
-      height: imageData.height,
-      dataLength: imageData.data.length
-    });
+    
+    if (DEBUG_TENSOR_PROCESSING) {
+      console.log('[Segmentation] ImageData created:', {
+        width: imageData.width,
+        height: imageData.height,
+        dataLength: imageData.data.length
+      });
+    }
 
     return imageData;
   } catch (err) {

@@ -5,37 +5,33 @@ import { SplashScreen } from './components/SplashScreen';
 import { LocationErrorPage } from './components/LocationErrorPage';
 import { useState, useEffect, useRef } from 'react';
 import { useLocationParams } from './hooks/useLocationParams';
+import { useSelector } from 'react-redux';
+import { RootState } from './store/store';
 
 function AppContent() {
-  const [showSplash, setShowSplash] = useState(true);
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
   const isCheckingGoogleMaps = useRef(false);
+  const isLoaded = useSelector((state: RootState) => state.streetView.isLoaded);
 
-  // Check if Google Maps is loaded - only once
+  // Check if Google Maps is loaded - SINGLE SOURCE OF TRUTH
   useEffect(() => {
     if (isCheckingGoogleMaps.current) {
-      console.log('[App] Already checking Google Maps, skipping');
       return;
     }
 
     isCheckingGoogleMaps.current = true;
 
-    console.log('[App] Starting Google Maps check...');
-    console.log('[App] window.google exists?', typeof window.google !== 'undefined');
-    console.log('[App] window.google.maps exists?', typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined');
+    console.log('[App] 🚀 Starting initialization sequence...');
+    console.log('[App] ⏳ Step 1: Loading Google Maps API...');
 
     const checkGoogleMaps = () => {
       const hasGoogle = typeof window.google !== 'undefined';
       const hasMaps = hasGoogle && typeof window.google.maps !== 'undefined';
       
-      console.log('[App] Check attempt - hasGoogle:', hasGoogle, 'hasMaps:', hasMaps);
-      
       if (hasMaps) {
-        console.log('[App] ✅ Google Maps loaded successfully! Setting state...');
+        console.log('[App] ✅ Step 1 complete: Google Maps API loaded');
         setIsGoogleMapsLoaded(true);
-        console.log('[App] State update called');
       } else {
-        console.log('[App] ⏳ Waiting for Google Maps... will retry in 100ms');
         setTimeout(checkGoogleMaps, 100);
       }
     };
@@ -43,35 +39,64 @@ function AppContent() {
     checkGoogleMaps();
   }, []);
 
-  // Log when isGoogleMapsLoaded changes
+  // Get location parameters - waits for Google Maps to be loaded
+  const { 
+    error, 
+    hasSourceError, 
+    attemptedSourceLocation, 
+    isInitializing,
+    sourceLocation,
+    destinationLocation,
+    sourceAddress,
+    destinationAddress,
+  } = useLocationParams(isGoogleMapsLoaded);
+
+  // Log when fully ready
   useEffect(() => {
-    console.log('[App] isGoogleMapsLoaded state changed to:', isGoogleMapsLoaded);
-  }, [isGoogleMapsLoaded]);
-
-  const { error, hasSourceError, attemptedSourceLocation, isLoading } = useLocationParams(isGoogleMapsLoaded);
-
-  const handleSplashComplete = () => {
-    console.log('[App] Splash complete, isGoogleMapsLoaded:', isGoogleMapsLoaded);
-    setShowSplash(false);
-  };
-
-  // Show splash screen first
-  if (showSplash) {
-    console.log('[App] Showing splash screen');
-    return <SplashScreen onComplete={handleSplashComplete} />;
-  }
-
-  console.log('[App] After splash - isGoogleMapsLoaded:', isGoogleMapsLoaded, 'isLoading:', isLoading, 'hasSourceError:', hasSourceError);
+    if (isGoogleMapsLoaded && !isInitializing && isLoaded) {
+      console.log('[App] ✅ All initialization steps complete (including panorama)');
+      console.log('[App] 🎬 Ready to show main interface');
+    }
+  }, [isGoogleMapsLoaded, isInitializing, isLoaded]);
 
   // Show error page if there's a source location error
   if (hasSourceError && attemptedSourceLocation) {
-    console.log('[App] Showing error page for:', attemptedSourceLocation);
+    console.log('[App] ❌ Showing error page for:', attemptedSourceLocation);
     return <LocationErrorPage attemptedLocation={attemptedSourceLocation} errorMessage={error || ''} />;
   }
 
-  // Show main app
-  console.log('[App] Showing StreetViewCanvas');
-  return <StreetViewCanvas />;
+  // Determine what to show
+  const canShowStreetView = isGoogleMapsLoaded && !isInitializing;
+  const shouldShowSplash = !canShowStreetView || !isLoaded;
+
+  console.log('[App] Render state:', {
+    isGoogleMapsLoaded,
+    isInitializing,
+    isLoaded,
+    canShowStreetView,
+    shouldShowSplash
+  });
+
+  return (
+    <>
+      {/* Always render StreetViewCanvas once we have Google Maps and location params */}
+      {canShowStreetView && (
+        <StreetViewCanvas 
+          isGoogleMapsLoaded={isGoogleMapsLoaded}
+          sourceLocation={sourceLocation}
+          destinationLocation={destinationLocation}
+          sourceAddress={sourceAddress}
+          destinationAddress={destinationAddress}
+          hasSourceError={hasSourceError}
+        />
+      )}
+      
+      {/* Show splash screen on top until panorama is ready */}
+      {shouldShowSplash && (
+        <SplashScreen onComplete={() => {}} />
+      )}
+    </>
+  );
 }
 
 function App() {

@@ -4,70 +4,62 @@ import { RootState } from '@/store/store';
 import { setPosition, setPov, setZoom, setLoaded, setDestinationLocation, setSourceAddress, setDestinationAddress } from '@/store/streetViewSlice';
 import { MotionTrackingOverlay } from './MotionTrackingOverlay';
 import { LocationOverlay } from './LocationOverlay';
-import { useLocationParams } from '@/hooks/useLocationParams';
 
-export const StreetViewCanvas = () => {
+interface StreetViewCanvasProps {
+  isGoogleMapsLoaded: boolean;
+  sourceLocation: { lat: number; lng: number } | null;
+  destinationLocation: { lat: number; lng: number } | null;
+  sourceAddress: string | null;
+  destinationAddress: string | null;
+  hasSourceError: boolean;
+}
+
+export const StreetViewCanvas = ({
+  isGoogleMapsLoaded,
+  sourceLocation,
+  destinationLocation,
+  sourceAddress,
+  destinationAddress,
+  hasSourceError,
+}: StreetViewCanvasProps) => {
   const dispatch = useDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const [isPanoramaReady, setIsPanoramaReady] = useState(false);
-  const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
-  const isCheckingGoogleMaps = useRef(false);
   const isUpdatingPovRef = useRef(false);
+  const hasInitializedRef = useRef(false);
+  const shouldCleanupRef = useRef(false); // NEW: Track if we should actually cleanup
   
   const { position, pov, zoom } = useSelector((state: RootState) => state.streetView);
 
-  // Check if Google Maps is loaded - only once
+  console.log('[StreetView] Component render - isGoogleMapsLoaded:', isGoogleMapsLoaded, 'isPanoramaReady:', isPanoramaReady);
+
+  // Update Redux store with addresses ONCE on mount
   useEffect(() => {
-    if (isCheckingGoogleMaps.current) {
-      console.log('[StreetView] Already checking Google Maps, skipping');
-      return;
+    if (sourceAddress) {
+      console.log('[StreetView] Setting source address:', sourceAddress);
+      dispatch(setSourceAddress(sourceAddress));
     }
+  }, []); // Empty deps - only run once
 
-    isCheckingGoogleMaps.current = true;
-
-    console.log('[StreetView] Starting Google Maps check...');
-    console.log('[StreetView] window.google exists?', typeof window.google !== 'undefined');
-    console.log('[StreetView] window.google.maps exists?', typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined');
-
-    const checkGoogleMaps = () => {
-      const hasGoogle = typeof window.google !== 'undefined';
-      const hasMaps = hasGoogle && typeof window.google.maps !== 'undefined';
-      
-      console.log('[StreetView] Check attempt - hasGoogle:', hasGoogle, 'hasMaps:', hasMaps);
-      
-      if (hasMaps) {
-        console.log('[StreetView] ✅ Google Maps loaded successfully! Setting state...');
-        setIsGoogleMapsLoaded(true);
-        console.log('[StreetView] State update called');
-      } else {
-        console.log('[StreetView] ⏳ Waiting for Google Maps... will retry in 100ms');
-        setTimeout(checkGoogleMaps, 100);
-      }
-    };
-    
-    checkGoogleMaps();
-  }, []);
-
-  // Log when isGoogleMapsLoaded changes
   useEffect(() => {
-    console.log('[StreetView] isGoogleMapsLoaded state changed to:', isGoogleMapsLoaded);
-  }, [isGoogleMapsLoaded]);
+    if (destinationAddress) {
+      console.log('[StreetView] Setting destination address:', destinationAddress);
+      dispatch(setDestinationAddress(destinationAddress));
+    }
+  }, []); // Empty deps - only run once
 
-  // Get location parameters
-  const {
-    isLoading,
-    error,
-    sourceLocation,
-    destinationLocation,
-    sourceAddress,
-    destinationAddress,
-    hasSourceError,
-  } = useLocationParams(isGoogleMapsLoaded);
-
-  // Initialize Street View panorama
+  // Update Redux store with destination location ONCE on mount
   useEffect(() => {
-    console.log('[StreetView] Panorama init effect - isGoogleMapsLoaded:', isGoogleMapsLoaded, 'containerRef:', !!containerRef.current, 'panoramaRef:', !!panoramaRef.current);
+    if (destinationLocation) {
+      console.log('[StreetView] Setting destination location:', destinationLocation);
+      dispatch(setDestinationLocation(destinationLocation));
+    }
+  }, []); // Empty deps - only run once
+
+  // Initialize Street View panorama ONCE
+  useEffect(() => {
+    console.log('[StreetView] Panorama init effect - isGoogleMapsLoaded:', isGoogleMapsLoaded, 'containerRef:', !!containerRef.current, 'panoramaRef:', !!panoramaRef.current, 'hasInitialized:', hasInitializedRef.current);
     
     if (!isGoogleMapsLoaded) {
       console.log('[StreetView] Cannot initialize panorama - Google Maps not loaded yet');
@@ -79,7 +71,7 @@ export const StreetViewCanvas = () => {
       return;
     }
 
-    if (panoramaRef.current) {
+    if (hasInitializedRef.current) {
       console.log('[StreetView] Panorama already initialized, skipping');
       return;
     }
@@ -89,6 +81,9 @@ export const StreetViewCanvas = () => {
     console.log('[StreetView] Position:', position);
     console.log('[StreetView] POV:', pov);
     console.log('[StreetView] Zoom:', zoom);
+
+    hasInitializedRef.current = true;
+    shouldCleanupRef.current = false; // Don't cleanup yet
 
     const panorama = new google.maps.StreetViewPanorama(containerRef.current, {
       position,
@@ -145,11 +140,12 @@ export const StreetViewCanvas = () => {
     // Mark as loaded when panorama is ready
     panorama.addListener('status_changed', () => {
       const status = panorama.getStatus();
-      console.log('[StreetView] Status changed:', status);
+      console.log('[StreetView] 🎯 Status changed:', status);
       if (status === 'OK') {
-        console.log('[StreetView] ✅ Panorama ready!');
+        console.log('[StreetView] ✅ Panorama ready! Setting isLoaded to true');
         dispatch(setLoaded(true));
         setIsPanoramaReady(true);
+        shouldCleanupRef.current = true; // Now we can cleanup on unmount
       } else {
         console.log('[StreetView] ❌ Panorama status not OK:', status);
       }
@@ -158,12 +154,15 @@ export const StreetViewCanvas = () => {
     console.log('[StreetView] Panorama initialized, waiting for status_changed event...');
 
     return () => {
-      console.log('[StreetView] Cleaning up panorama');
-      if (panoramaRef.current) {
+      // Only cleanup if we've successfully initialized
+      if (shouldCleanupRef.current && panoramaRef.current) {
+        console.log('[StreetView] Cleaning up panorama (component unmounting)');
         google.maps.event.clearInstanceListeners(panoramaRef.current);
+      } else {
+        console.log('[StreetView] Skipping cleanup (Strict Mode double-invocation)');
       }
     };
-  }, [isGoogleMapsLoaded, position, zoom, dispatch]);
+  }, [isGoogleMapsLoaded]); // Only depend on isGoogleMapsLoaded
 
   // Update panorama POV when Redux state changes (from motion tracking)
   useEffect(() => {
@@ -185,59 +184,15 @@ export const StreetViewCanvas = () => {
     }, 50);
   }, [pov, isPanoramaReady]);
 
-  // Update panorama position when location params change
+  // Update panorama position when source location changes
   useEffect(() => {
-    if (!panoramaRef.current || !sourceLocation || isLoading || hasSourceError) {
+    if (!panoramaRef.current || !sourceLocation || hasSourceError || !isPanoramaReady) {
       return;
     }
 
     console.log('[StreetView] Updating position to:', sourceLocation);
     panoramaRef.current.setPosition(sourceLocation);
-    dispatch(setPosition(sourceLocation));
-  }, [sourceLocation, isLoading, hasSourceError, dispatch]);
-
-  // Update Redux store with addresses
-  useEffect(() => {
-    if (sourceAddress) {
-      console.log('[StreetView] Setting source address:', sourceAddress);
-      dispatch(setSourceAddress(sourceAddress));
-    }
-  }, [sourceAddress, dispatch]);
-
-  useEffect(() => {
-    if (destinationAddress) {
-      console.log('[StreetView] Setting destination address:', destinationAddress);
-      dispatch(setDestinationAddress(destinationAddress));
-    }
-  }, [destinationAddress, dispatch]);
-
-  // Update Redux store with destination location
-  useEffect(() => {
-    if (destinationLocation) {
-      console.log('[StreetView] Setting destination location:', destinationLocation);
-      dispatch(setDestinationLocation(destinationLocation));
-    }
-  }, [destinationLocation, dispatch]);
-
-  console.log('[StreetView] Render - isLoading:', isLoading, 'isGoogleMapsLoaded:', isGoogleMapsLoaded, 'error:', error, 'hasSourceError:', hasSourceError);
-
-  // Show loading state
-  if (isLoading || !isGoogleMapsLoaded) {
-    console.log('[StreetView] Showing loading state');
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-blue-600 to-purple-600">
-        <div className="text-white text-2xl font-light">
-          {!isGoogleMapsLoaded ? 'Loading Google Maps...' : 'Loading location...'}
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state
-  if (error || hasSourceError) {
-    console.log('[StreetView] Has error, returning null');
-    return null; // Error page will be shown by parent component
-  }
+  }, [sourceLocation, hasSourceError, isPanoramaReady]);
 
   console.log('[StreetView] Rendering panorama container and overlays');
 

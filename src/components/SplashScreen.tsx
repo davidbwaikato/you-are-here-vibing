@@ -5,36 +5,30 @@ interface SplashScreenProps {
 }
 
 export const SplashScreen = ({ onComplete }: SplashScreenProps) => {
-  const [fadeOut, setFadeOut] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
-    console.log('[SplashScreen] Mounted, will complete in 2 seconds');
+    console.log('[SplashScreen] 💫 Splash screen mounted');
     
-    // Wait 2 seconds, then start fade out
-    const timer = setTimeout(() => {
-      console.log('[SplashScreen] Starting fade out');
-      setFadeOut(true);
-      
-      // Complete transition after fade animation (1 second)
-      setTimeout(() => {
-        console.log('[SplashScreen] Calling onComplete');
+    return () => {
+      console.log('[SplashScreen] 👋 Splash screen unmounting');
+    };
+  }, []);
+
+  // Fade out when parent decides to unmount
+  useEffect(() => {
+    if (!isVisible) {
+      const timer = setTimeout(() => {
         onComplete();
       }, 1000);
-    }, 2000);
-
-    return () => {
-      console.log('[SplashScreen] Unmounting');
-      clearTimeout(timer);
-    };
-  }, [onComplete]);
-
-  console.log('[SplashScreen] Rendering, fadeOut:', fadeOut);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, onComplete]);
 
   return (
     <div
-      className={`fixed inset-0 bg-white z-50 flex items-center justify-center transition-opacity duration-1000 ${
-        fadeOut ? 'opacity-0' : 'opacity-100'
-      }`}
+      className="fixed inset-0 bg-white z-50 flex items-center justify-center"
+      style={{ zIndex: 9999 }}
     >
       <div className="flex flex-col items-center gap-8 px-4">
         {/* Logo/Icon */}
@@ -65,7 +59,6 @@ export const SplashScreen = ({ onComplete }: SplashScreenProps) => {
             <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce [animation-delay:-0.15s]" />
             <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" />
           </div>
-          <p className="text-sm text-slate-400 font-light">Loading your destination...</p>
         </div>
       </div>
     </div>
