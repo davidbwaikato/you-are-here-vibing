@@ -94,8 +94,10 @@ export const useSegmentationLoop = ({
       overlayEnabledAtStartRef.current = isVideoOverlayEnabled;
       trackingEnabledAtStartRef.current = isTrackingEnabled;
       
+      let segmentationTensor: any = null;
+      
       try {
-        const segmentationTensor = await segment();
+        segmentationTensor = await segment();
 
         // CRITICAL: Check if tracking and overlay are still enabled after async segment() completes
         if (!trackingEnabledAtStartRef.current || !overlayEnabledAtStartRef.current) {
@@ -105,7 +107,6 @@ export const useSegmentationLoop = ({
               overlayEnabled: overlayEnabledAtStartRef.current
             });
           }
-          isSegmentingRef.current = false;
           return;
         }
 
@@ -139,7 +140,6 @@ export const useSegmentationLoop = ({
                 overlayEnabled: overlayEnabledAtStartRef.current
               });
             }
-            isSegmentingRef.current = false;
             return;
           }
           
@@ -156,6 +156,11 @@ export const useSegmentationLoop = ({
       } catch (error) {
         console.error('[Segmentation] Error:', error);
       } finally {
+        // CRITICAL: Dispose tensor to prevent GPU memory leak
+        segmentationTensor.dispose();
+          if (DEBUG_SEGMENTATION) {
+            console.log('[Segmentation] Tensor disposed');
+          }
         isSegmentingRef.current = false;
       }
     };
