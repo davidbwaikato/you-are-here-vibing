@@ -2,8 +2,13 @@ import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { useRoutePolyline } from '@/hooks/useRoutePolyline';
-import { truncatePolyline } from '@/utils/geoUtils';
+import { interpolatePolyline, filterPointsByDistance } from '@/utils/geoUtils';
 import { polylineTo3D } from '@/utils/coordinateConversion';
+import { 
+  MAX_INTERPOLATION_SPACING, 
+  MIN_DISTANCE_MARKERS_FROM_USER, 
+  MAX_DISTANCE_MARKERS_FROM_USER 
+} from '@/utils/constants';
 import * as THREE from 'three';
 
 interface ThreeJsCanvasProps {
@@ -126,33 +131,78 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       return;
     }
 
-    console.log('[ThreeJS] 🏹 Creating 3D directional arrows from current position...');
+    console.log('[ThreeJS] 🏹 Creating 3D directional arrows with interpolation + distance filtering...');
     console.log('[ThreeJS] 📍 Current Street View position:', position);
-
-    // Step 1: Truncate route to 100 meters from current position
-    const truncatedRoute = truncatePolyline(routePolyline, 100);
-    
-    console.log('[ThreeJS] ✂️ Route truncation complete:', {
-      originalPoints: routePolyline.length,
-      truncatedPoints: truncatedRoute.points.length,
-      totalDistance: truncatedRoute.totalDistance.toFixed(2) + 'm',
-      wasTruncated: truncatedRoute.truncated,
+    console.log('[ThreeJS] ⚙️ Configuration:', {
+      maxInterpolationSpacing: MAX_INTERPOLATION_SPACING + 'm',
+      minDistanceFromUser: MIN_DISTANCE_MARKERS_FROM_USER + 'm',
+      maxDistanceFromUser: MAX_DISTANCE_MARKERS_FROM_USER + 'm',
     });
 
-    if (truncatedRoute.points.length < 2) {
-      console.warn('[ThreeJS] ⚠️ Not enough points to create arrows after truncation');
+    // STAGE 1: INTERPOLATION
+    // Add interpolation points to ensure consistent spacing (≤ MAX_INTERPOLATION_SPACING)
+    console.log('[ThreeJS] 📊 STAGE 1: Interpolation');
+    const interpolatedRoute = interpolatePolyline(routePolyline, MAX_INTERPOLATION_SPACING);
+    
+    console.log('[ThreeJS] ✅ Interpolation complete:', {
+      originalPoints: interpolatedRoute.originalPointCount,
+      addedPoints: interpolatedRoute.interpolatedPointCount,
+      totalPoints: interpolatedRoute.points.length,
+      totalDistance: interpolatedRoute.totalDistance.toFixed(2) + 'm',
+    });
+
+    // STAGE 2: DISTANCE FILTERING
+    // Filter points to only show those within the visibility zone (MIN to MAX distance from user)
+    console.log('[ThreeJS] 📊 STAGE 2: Distance Filtering');
+    const filteredPoints = filterPointsByDistance(
+      interpolatedRoute.points,
+      position,
+      MIN_DISTANCE_MARKERS_FROM_USER,
+      MAX_DISTANCE_MARKERS_FROM_USER
+    );
+
+    console.log('[ThreeJS] ✅ Distance filtering complete:', {
+      inputPoints: interpolatedRoute.points.length,
+      outputPoints: filteredPoints.length,
+      visibilityZone: `${MIN_DISTANCE_MARKERS_FROM_USER}m - ${MAX_DISTANCE_MARKERS_FROM_USER}m`,
+    });
+
+    if (filteredPoints.length < 2) {
+      console.warn('[ThreeJS] ⚠️ Not enough points after filtering to create arrows');
+      
+      // Clean up existing arrows
+      if (routeArrowsRef.current.length > 0) {
+        routeArrowsRef.current.forEach(arrow => {
+          sceneRef.current?.remove(arrow);
+          arrow.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.geometry.dispose();
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => m.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          });
+        });
+        routeArrowsRef.current = [];
+      }
+      
       return;
     }
 
-    // Step 2: Convert truncated LatLng points to 3D coordinates
-    const polyline3D = polylineTo3D(truncatedRoute.points, position);
+    // STAGE 3: 3D CONVERSION
+    // Convert filtered LatLng points to 3D coordinates
+    console.log('[ThreeJS] 📊 STAGE 3: 3D Conversion');
+    const polyline3D = polylineTo3D(filteredPoints, position);
     
-    console.log('[ThreeJS] 🔄 3D conversion complete:', {
+    console.log('[ThreeJS] ✅ 3D conversion complete:', {
       points3D: polyline3D.points.length,
       totalLength3D: polyline3D.totalLength.toFixed(2) + 'm',
     });
 
-    // Step 3: Remove existing arrows if present
+    // STAGE 4: ARROW CREATION
+    // Remove existing arrows if present
     if (routeArrowsRef.current.length > 0) {
       routeArrowsRef.current.forEach(arrow => {
         sceneRef.current?.remove(arrow);
@@ -171,12 +221,13 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       routeArrowsRef.current = [];
     }
 
-    // Step 4: Create arrow geometry components
-    // Arrow consists of a cone (tip) and cylinder (shaft)
-    const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 8); // radius, height, segments
-    const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8); // radiusTop, radiusBottom, height, segments
+    console.log('[ThreeJS] 📊 STAGE 4: Arrow Creation');
+
+    // Create arrow geometry components
+    const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 8);
+    const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8);
     
-    // Step 5: Create teal material for arrows
+    // Create teal material for arrows
     const arrowMaterial = new THREE.MeshStandardMaterial({
       color: 0x14b8a6, // Teal color
       transparent: true,
@@ -185,25 +236,22 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       roughness: 0.7,
     });
 
-    // Step 6: Create an arrow at each 3D point (except first and last)
+    // Create arrows at each 3D point (except last - no next position)
     const newArrows: THREE.Group[] = [];
     
-    // Start at index 1 to skip first point (user's current position)
-    // End at points.length - 1 to skip last point (no next position)
-    for (let i = 1; i < polyline3D.points.length - 1; i++) {
+    for (let i = 0; i < polyline3D.points.length - 1; i++) {
       const currentPoint = polyline3D.points[i];
       const nextPoint = polyline3D.points[i + 1];
       
-      // Create arrow group to hold cone and cylinder
+      // Create arrow group
       const arrowGroup = new THREE.Group();
       
-      // Create cone (arrow tip) and cylinder (arrow shaft)
+      // Create cone and cylinder
       const cone = new THREE.Mesh(coneGeometry, arrowMaterial);
       const cylinder = new THREE.Mesh(cylinderGeometry, arrowMaterial);
       
       // Position cone at top of cylinder
-      // Cone points up by default, cylinder is vertical
-      cone.position.y = 0.7; // 0.4 (half cylinder height) + 0.3 (half cone height)
+      cone.position.y = 0.7;
       cylinder.position.y = 0;
       
       arrowGroup.add(cylinder);
@@ -212,7 +260,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       // Position arrow at current point
       arrowGroup.position.set(currentPoint.x, currentPoint.y, currentPoint.z);
       
-      // Calculate direction vector from current to next point
+      // Calculate direction vector
       const direction = new THREE.Vector3(
         nextPoint.x - currentPoint.x,
         nextPoint.y - currentPoint.y,
@@ -220,8 +268,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       );
       direction.normalize();
       
-      // Calculate rotation to point arrow in direction of travel
-      // Default arrow points up (0, 1, 0), we need to rotate it to point in direction
+      // Rotate arrow to point in direction of travel
       const up = new THREE.Vector3(0, 1, 0);
       const quaternion = new THREE.Quaternion();
       quaternion.setFromUnitVectors(up, direction);
@@ -229,19 +276,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       
       sceneRef.current?.add(arrowGroup);
       newArrows.push(arrowGroup);
-      
-      if (i === 1) {
-        console.log('[ThreeJS] 📍 First arrow (index 1):', {
-          position: currentPoint,
-          direction: { x: direction.x.toFixed(3), y: direction.y.toFixed(3), z: direction.z.toFixed(3) },
-          note: 'Skipped index 0 (user position)',
-        });
-      } else if (i === polyline3D.points.length - 2) {
-        console.log('[ThreeJS] 📍 Last arrow:', {
-          position: currentPoint,
-          direction: { x: direction.x.toFixed(3), y: direction.y.toFixed(3), z: direction.z.toFixed(3) },
-        });
-      }
     }
 
     routeArrowsRef.current = newArrows;
@@ -249,17 +283,14 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     console.log('[ThreeJS] ✅ 3D directional arrows created and added to scene:', {
       color: 'teal (#14b8a6)',
       arrowCount: newArrows.length,
-      totalPoints: polyline3D.points.length,
-      omittedPoints: 2,
-      omittedReason: 'First point (user position) and last point (no next position)',
       dimensions: 'cone: 0.6m height, cylinder: 0.8m height',
       totalArrowHeight: '1.4m',
-      totalRouteLength: polyline3D.totalLength.toFixed(2) + 'm',
+      visibilityZone: `${MIN_DISTANCE_MARKERS_FROM_USER}m - ${MAX_DISTANCE_MARKERS_FROM_USER}m from user`,
+      maxSpacing: MAX_INTERPOLATION_SPACING + 'm between consecutive markers',
     });
     console.log('[ThreeJS] 🌍 Arrows are WORLD-SPACE anchored (update on position change)');
-    console.log('[ThreeJS] 📏 Showing next 100m of route from current position');
     console.log('[ThreeJS] 🧭 Each arrow points toward the next route point');
-    console.log('[ThreeJS] ✨ First arrow omitted to prevent overlap with user position');
+    console.log('[ThreeJS] 📏 Two-stage processing: Interpolation → Distance Filtering');
 
   }, [isStreetViewLoaded, hasRoute, position, routePolyline]);
 

@@ -42,3 +42,11 @@ export const FINGER_CONNECTIONS = [
   [0, 13, 14, 15, 16],
   [0, 17, 18, 19, 20],
 ];
+
+// ROUTE MARKER INTERPOLATION: Maximum spacing between consecutive markers
+// If distance between two route points exceeds this, interpolation points are added
+export const MAX_INTERPOLATION_SPACING = 10; // meters
+
+// ROUTE MARKER VISIBILITY: Distance-based filtering for displayed markers
+export const MIN_DISTANCE_MARKERS_FROM_USER = 5; // meters - inner boundary
+export const MAX_DISTANCE_MARKERS_FROM_USER = 100; // meters - outer boundary

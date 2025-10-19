@@ -13,12 +13,11 @@ export interface PolylineSegment {
   distanceMeters: number;
 }
 
-export interface TruncatedPolyline {
+export interface InterpolatedPolyline {
   points: LatLng[];
+  originalPointCount: number;
+  interpolatedPointCount: number;
   totalDistance: number;
-  segmentCount: number;
-  truncated: boolean;
-  truncationPoint?: LatLng;
 }
 
 /**
@@ -98,78 +97,135 @@ export const interpolatePoint = (
 };
 
 /**
- * Truncate polyline to a maximum distance from the start point
- * Returns a new polyline with points up to the cutoff distance
+ * Interpolate additional points along a polyline to ensure consistent spacing
+ * 
+ * For any two consecutive points where distance > maxSpacing, adds evenly
+ * distributed interpolation points to maintain spacing ≤ maxSpacing
+ * 
+ * @param points - Original polyline points
+ * @param maxSpacing - Maximum allowed spacing between consecutive points (meters)
+ * @returns Interpolated polyline with consistent spacing
  */
-export const truncatePolyline = (
+export const interpolatePolyline = (
   points: LatLng[],
-  maxDistanceMeters: number
-): TruncatedPolyline => {
-  console.log('[GeoUtils] ✂️ Starting polyline truncation:', {
+  maxSpacing: number
+): InterpolatedPolyline => {
+  console.log('[GeoUtils] 🔄 Starting polyline interpolation:', {
     inputPoints: points.length,
-    maxDistance: maxDistanceMeters + 'm',
+    maxSpacing: maxSpacing + 'm',
   });
 
   if (points.length < 2) {
     console.warn('[GeoUtils] ⚠️ Polyline has fewer than 2 points, returning as-is');
     return {
       points,
+      originalPointCount: points.length,
+      interpolatedPointCount: 0,
       totalDistance: 0,
-      segmentCount: 0,
-      truncated: false,
     };
   }
 
-  const segments = calculatePolylineSegments(points);
-  const truncatedPoints: LatLng[] = [points[0]]; // Always include start point
-  let accumulatedDistance = 0;
-  let truncated = false;
-  let truncationPoint: LatLng | undefined;
+  const interpolatedPoints: LatLng[] = [];
+  let totalDistance = 0;
+  let interpolatedCount = 0;
 
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    const segmentEndDistance = accumulatedDistance + segment.distanceMeters;
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i];
+    const end = points[i + 1];
+    const segmentDistance = calculateDistance(start, end);
+    
+    // Always add the start point
+    interpolatedPoints.push(start);
+    totalDistance += segmentDistance;
 
-    if (segmentEndDistance <= maxDistanceMeters) {
-      // Entire segment fits within the limit
-      truncatedPoints.push(segment.end);
-      accumulatedDistance = segmentEndDistance;
-      
-      console.log(`[GeoUtils] ✅ Segment ${i + 1}/${segments.length}: ${segment.distanceMeters.toFixed(2)}m (total: ${accumulatedDistance.toFixed(2)}m)`);
+    // Check if interpolation is needed
+    if (segmentDistance > maxSpacing) {
+      // Calculate how many interpolation points we need
+      // We want points roughly every maxSpacing meters
+      const numInterpolations = Math.floor(segmentDistance / maxSpacing);
+      const actualSpacing = segmentDistance / (numInterpolations + 1);
+
+      console.log(`[GeoUtils] 📍 Segment ${i + 1}: ${segmentDistance.toFixed(2)}m - Adding ${numInterpolations} interpolation points (spacing: ${actualSpacing.toFixed(2)}m)`);
+
+      // Add evenly distributed interpolation points
+      for (let j = 1; j <= numInterpolations; j++) {
+        const distanceFromStart = j * actualSpacing;
+        const interpolated = interpolatePoint(start, end, distanceFromStart, segmentDistance);
+        interpolatedPoints.push(interpolated);
+        interpolatedCount++;
+      }
     } else {
-      // This segment exceeds the limit - interpolate the cutoff point
-      const remainingDistance = maxDistanceMeters - accumulatedDistance;
-      truncationPoint = interpolatePoint(
-        segment.start,
-        segment.end,
-        remainingDistance,
-        segment.distanceMeters
-      );
-      
-      truncatedPoints.push(truncationPoint);
-      accumulatedDistance = maxDistanceMeters;
-      truncated = true;
-
-      console.log(`[GeoUtils] ✂️ Segment ${i + 1}/${segments.length}: Truncated at ${remainingDistance.toFixed(2)}m into segment`);
-      console.log('[GeoUtils] 📍 Interpolated truncation point:', truncationPoint);
-      break;
+      console.log(`[GeoUtils] ✅ Segment ${i + 1}: ${segmentDistance.toFixed(2)}m - No interpolation needed`);
     }
   }
 
-  const result: TruncatedPolyline = {
-    points: truncatedPoints,
-    totalDistance: accumulatedDistance,
-    segmentCount: truncatedPoints.length - 1,
-    truncated,
-    truncationPoint,
+  // Add the final point
+  interpolatedPoints.push(points[points.length - 1]);
+
+  const result: InterpolatedPolyline = {
+    points: interpolatedPoints,
+    originalPointCount: points.length,
+    interpolatedPointCount: interpolatedCount,
+    totalDistance,
   };
 
-  console.log('[GeoUtils] ✅ Truncation complete:', {
-    outputPoints: result.points.length,
+  console.log('[GeoUtils] ✅ Interpolation complete:', {
+    originalPoints: result.originalPointCount,
+    interpolatedPoints: result.interpolatedPointCount,
+    totalPoints: result.points.length,
     totalDistance: result.totalDistance.toFixed(2) + 'm',
-    truncated: result.truncated,
-    reductionPercent: ((1 - result.points.length / points.length) * 100).toFixed(1) + '%',
+    averageSpacing: (result.totalDistance / (result.points.length - 1)).toFixed(2) + 'm',
   });
 
   return result;
+};
+
+/**
+ * Filter polyline points based on distance from a reference point
+ * 
+ * Returns only points within the specified distance range (minDistance to maxDistance)
+ * 
+ * @param points - Polyline points to filter
+ * @param referencePoint - Reference point (typically user's current position)
+ * @param minDistance - Minimum distance in meters (points closer are excluded)
+ * @param maxDistance - Maximum distance in meters (points farther are excluded)
+ * @returns Filtered points within the distance range
+ */
+export const filterPointsByDistance = (
+  points: LatLng[],
+  referencePoint: LatLng,
+  minDistance: number,
+  maxDistance: number
+): LatLng[] => {
+  console.log('[GeoUtils] 🔍 Filtering points by distance:', {
+    inputPoints: points.length,
+    referencePoint,
+    minDistance: minDistance + 'm',
+    maxDistance: maxDistance + 'm',
+  });
+
+  const filteredPoints: LatLng[] = [];
+  let tooClose = 0;
+  let tooFar = 0;
+
+  for (const point of points) {
+    const distance = calculateDistance(referencePoint, point);
+
+    if (distance < minDistance) {
+      tooClose++;
+    } else if (distance > maxDistance) {
+      tooFar++;
+    } else {
+      filteredPoints.push(point);
+    }
+  }
+
+  console.log('[GeoUtils] ✅ Distance filtering complete:', {
+    outputPoints: filteredPoints.length,
+    excludedTooClose: tooClose,
+    excludedTooFar: tooFar,
+    retentionRate: ((filteredPoints.length / points.length) * 100).toFixed(1) + '%',
+  });
+
+  return filteredPoints;
 };
