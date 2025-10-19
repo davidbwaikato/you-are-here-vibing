@@ -4,6 +4,7 @@ import { RootState } from '@/store/store';
 import { setPosition, setPov, setZoom, setLoaded, setDestinationLocation, setSourceAddress, setDestinationAddress } from '@/store/streetViewSlice';
 import { MotionTrackingOverlay } from './MotionTrackingOverlay';
 import { LocationOverlay } from './LocationOverlay';
+import { ThreeJsCanvas } from './ThreeJsCanvas';
 
 interface StreetViewCanvasProps {
   isGoogleMapsLoaded: boolean;
@@ -28,7 +29,7 @@ export const StreetViewCanvas = ({
   const [isPanoramaReady, setIsPanoramaReady] = useState(false);
   const isUpdatingPovRef = useRef(false);
   const hasInitializedRef = useRef(false);
-  const shouldCleanupRef = useRef(false); // NEW: Track if we should actually cleanup
+  const shouldCleanupRef = useRef(false);
   
   const { position, pov, zoom } = useSelector((state: RootState) => state.streetView);
 
@@ -40,14 +41,14 @@ export const StreetViewCanvas = ({
       console.log('[StreetView] Setting source address:', sourceAddress);
       dispatch(setSourceAddress(sourceAddress));
     }
-  }, []); // Empty deps - only run once
+  }, []);
 
   useEffect(() => {
     if (destinationAddress) {
       console.log('[StreetView] Setting destination address:', destinationAddress);
       dispatch(setDestinationAddress(destinationAddress));
     }
-  }, []); // Empty deps - only run once
+  }, []);
 
   // Update Redux store with destination location ONCE on mount
   useEffect(() => {
@@ -55,7 +56,7 @@ export const StreetViewCanvas = ({
       console.log('[StreetView] Setting destination location:', destinationLocation);
       dispatch(setDestinationLocation(destinationLocation));
     }
-  }, []); // Empty deps - only run once
+  }, []);
 
   // Initialize Street View panorama ONCE
   useEffect(() => {
@@ -83,7 +84,7 @@ export const StreetViewCanvas = ({
     console.log('[StreetView] Zoom:', zoom);
 
     hasInitializedRef.current = true;
-    shouldCleanupRef.current = false; // Don't cleanup yet
+    shouldCleanupRef.current = false;
 
     const panorama = new google.maps.StreetViewPanorama(containerRef.current, {
       position,
@@ -145,7 +146,7 @@ export const StreetViewCanvas = ({
         console.log('[StreetView] ✅ Panorama ready! Setting isLoaded to true');
         dispatch(setLoaded(true));
         setIsPanoramaReady(true);
-        shouldCleanupRef.current = true; // Now we can cleanup on unmount
+        shouldCleanupRef.current = true;
       } else {
         console.log('[StreetView] ❌ Panorama status not OK:', status);
       }
@@ -154,7 +155,6 @@ export const StreetViewCanvas = ({
     console.log('[StreetView] Panorama initialized, waiting for status_changed event...');
 
     return () => {
-      // Only cleanup if we've successfully initialized
       if (shouldCleanupRef.current && panoramaRef.current) {
         console.log('[StreetView] Cleaning up panorama (component unmounting)');
         google.maps.event.clearInstanceListeners(panoramaRef.current);
@@ -162,7 +162,7 @@ export const StreetViewCanvas = ({
         console.log('[StreetView] Skipping cleanup (Strict Mode double-invocation)');
       }
     };
-  }, [isGoogleMapsLoaded]); // Only depend on isGoogleMapsLoaded
+  }, [isGoogleMapsLoaded]);
 
   // Update panorama POV when Redux state changes (from motion tracking)
   useEffect(() => {
@@ -178,7 +178,6 @@ export const StreetViewCanvas = ({
       pitch: pov.pitch
     });
     
-    // Reset flag after a short delay to allow the pov_changed event to fire
     setTimeout(() => {
       isUpdatingPovRef.current = false;
     }, 50);
@@ -210,6 +209,7 @@ export const StreetViewCanvas = ({
       />
       {isPanoramaReady && (
         <>
+          <ThreeJsCanvas isReady={isPanoramaReady} />
           <MotionTrackingOverlay panoramaRef={panoramaRef} />
           <LocationOverlay />
         </>

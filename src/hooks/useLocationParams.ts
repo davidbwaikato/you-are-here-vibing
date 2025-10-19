@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { parseLocationParams } from '../utils/urlParams';
 import { geocodeLocation, type LatLng } from '../services/geocoding';
+import { fetchWalkingRoute, type RouteResult } from '../services/routing';
 import { setPosition, setDestinationLocation, setSourceAddress, setDestinationAddress } from '../store/streetViewSlice';
 
 interface LocationState {
@@ -13,6 +14,7 @@ interface LocationState {
   destinationAddress: string | null;
   attemptedSourceLocation: string | null;
   hasSourceError: boolean;
+  route: RouteResult | null;
 }
 
 const DEFAULT_SOURCE_LOCATION: LatLng = {
@@ -26,7 +28,7 @@ const DEFAULT_DESTINATION_LOCATION: LatLng = {
 };
 
 /**
- * Hook to handle URL parameter parsing and geocoding
+ * Hook to handle URL parameter parsing, geocoding, and route calculation
  */
 export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
   const dispatch = useDispatch();
@@ -39,6 +41,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
     destinationAddress: 'The Spanish Steps, Rome, Italy',
     attemptedSourceLocation: null,
     hasSourceError: false,
+    route: null,
   });
 
   useEffect(() => {
@@ -49,24 +52,46 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
       return;
     }
 
-    console.log('[useLocationParams] ✅ Google Maps API loaded, initializing Geocoder...');
+    console.log('[useLocationParams] ✅ Google Maps API loaded, initializing...');
 
     const processLocations = async () => {
       const params = parseLocationParams();
       console.log('[useLocationParams] 📍 Parsed URL params:', params);
       
-      // If no parameters, use default locations and update Redux
+      // Get API key from environment
+      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      if (!apiKey) {
+        console.error('[useLocationParams] ❌ Google Maps API key not found');
+        setState((prev) => ({
+          ...prev,
+          isInitializing: false,
+          error: 'Google Maps API key not configured',
+        }));
+        return;
+      }
+
+      // If no parameters, use default locations and calculate route
       if (!params.src && !params.dst) {
         console.log('[useLocationParams] 📌 No URL params, using default locations');
+        
+        // Calculate route with default locations
+        console.log('[useLocationParams] 🚶 Calculating default route...');
+        const routeResult = await fetchWalkingRoute(
+          DEFAULT_SOURCE_LOCATION,
+          DEFAULT_DESTINATION_LOCATION,
+          apiKey
+        );
+
         const defaultState = {
           isInitializing: false,
-          error: null,
+          error: 'error' in routeResult ? routeResult.error : null,
           sourceLocation: DEFAULT_SOURCE_LOCATION,
           destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
           destinationAddress: 'The Spanish Steps, Rome, Italy',
           attemptedSourceLocation: null,
           hasSourceError: false,
+          route: 'error' in routeResult ? null : routeResult,
         };
         setState(defaultState);
         
@@ -76,7 +101,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         dispatch(setPosition(DEFAULT_SOURCE_LOCATION));
         dispatch(setDestinationLocation(DEFAULT_DESTINATION_LOCATION));
         console.log('[useLocationParams] ✅ Redux store updated with default addresses');
-        console.log('[useLocationParams] ✅ Initialization complete (no geocoding needed)');
+        console.log('[useLocationParams] ✅ Initialization complete');
         return;
       }
 
@@ -127,6 +152,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           destinationAddress: 'The Spanish Steps, Rome, Italy',
           attemptedSourceLocation: params.src || null,
           hasSourceError: false,
+          route: null,
         };
 
         // Process source location
@@ -165,10 +191,28 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           }
         }
 
+        // Calculate route if both locations are valid
+        if (newState.sourceLocation && newState.destinationLocation && !newState.hasSourceError) {
+          console.log('[useLocationParams] 🚶 Calculating walking route...');
+          const routeResult = await fetchWalkingRoute(
+            newState.sourceLocation,
+            newState.destinationLocation,
+            apiKey
+          );
+
+          if ('error' in routeResult) {
+            console.error('[useLocationParams] ❌ Route calculation failed:', routeResult.error);
+            newState.error = routeResult.error;
+          } else {
+            console.log('[useLocationParams] ✅ Route calculated successfully');
+            newState.route = routeResult;
+          }
+        }
+
         console.log('[useLocationParams] ✅ All initialization complete, ready to show main app');
         setState(newState);
       } catch (error) {
-        console.error('[useLocationParams] ❌ Geocoding error:', error);
+        console.error('[useLocationParams] ❌ Initialization error:', error);
         const errorState = {
           isInitializing: false,
           error: 'Failed to process locations',
@@ -178,6 +222,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           destinationAddress: 'The Spanish Steps, Rome, Italy',
           attemptedSourceLocation: params.src || null,
           hasSourceError: !!params.src,
+          route: null,
         };
         setState(errorState);
         
