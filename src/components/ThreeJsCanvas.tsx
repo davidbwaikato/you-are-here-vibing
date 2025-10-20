@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { useRoutePolyline } from '@/hooks/useRoutePolyline';
-import { interpolatePolyline, filterPointsByDistance } from '@/utils/geoUtils';
+import { interpolatePolyline, getVisibleMarkers } from '@/utils/geoUtils';
 import { polylineTo3D } from '@/utils/coordinateConversion';
 import { 
   MAX_INTERPOLATION_SPACING, 
@@ -131,12 +131,14 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       return;
     }
 
-    console.log('[ThreeJS] 🏹 Creating 3D directional arrows with interpolation + distance filtering...');
+    console.log('[ThreeJS] 🏹 Creating 3D directional arrows with interpolation + visibility filtering...');
     console.log('[ThreeJS] 📍 Current Street View position:', position);
+    console.log('[ThreeJS] 🧭 Current Street View heading:', pov.heading.toFixed(1) + '°');
     console.log('[ThreeJS] ⚙️ Configuration:', {
       maxInterpolationSpacing: MAX_INTERPOLATION_SPACING + 'm',
       minDistanceFromUser: MIN_DISTANCE_MARKERS_FROM_USER + 'm',
       maxDistanceFromUser: MAX_DISTANCE_MARKERS_FROM_USER + 'm',
+      userFOV: '75°',
     });
 
     // STAGE 1: INTERPOLATION
@@ -151,24 +153,40 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       totalDistance: interpolatedRoute.totalDistance.toFixed(2) + 'm',
     });
 
-    // STAGE 2: DISTANCE FILTERING
-    // Filter points to only show those within the visibility zone (MIN to MAX distance from user)
-    console.log('[ThreeJS] 📊 STAGE 2: Distance Filtering');
-    const filteredPoints = filterPointsByDistance(
+    // STAGE 2: VISIBILITY FILTERING (Distance + FOV)
+    // Filter points to only show those within the visibility zone AND within user's FOV
+    console.log('[ThreeJS] 📊 STAGE 2: Visibility Filtering (Distance + FOV)');
+    const visibilityResult = getVisibleMarkers(
       interpolatedRoute.points,
       position,
+      pov.heading,
+      75, // User's horizontal FOV in degrees
       MIN_DISTANCE_MARKERS_FROM_USER,
       MAX_DISTANCE_MARKERS_FROM_USER
     );
 
-    console.log('[ThreeJS] ✅ Distance filtering complete:', {
+    console.log('[ThreeJS] ✅ Visibility filtering complete:', {
       inputPoints: interpolatedRoute.points.length,
-      outputPoints: filteredPoints.length,
+      visibleCount: visibilityResult.visibleCount,
+      closestMarkerIndex: visibilityResult.closestMarkerIndex,
+      closestMarkerDistance: visibilityResult.closestMarkerIndex >= 0 
+        ? visibilityResult.visibleMarkers[visibilityResult.closestMarkerIndex].distance.toFixed(2) + 'm'
+        : 'N/A',
       visibilityZone: `${MIN_DISTANCE_MARKERS_FROM_USER}m - ${MAX_DISTANCE_MARKERS_FROM_USER}m`,
+      userFOV: '75°',
     });
 
-    if (filteredPoints.length < 2) {
-      console.warn('[ThreeJS] ⚠️ Not enough points after filtering to create arrows');
+    // Extract LatLng coordinates from visible markers
+    const visiblePoints = visibilityResult.visibleMarkers.map(marker => 
+      interpolatedRoute.points[marker.originalRouteIndex]
+    );
+
+    console.log('[ThreeJS] 📍 Extracted visible points:', {
+      visiblePointsCount: visiblePoints.length,
+    });
+
+    if (visiblePoints.length < 2) {
+      console.warn('[ThreeJS] ⚠️ Not enough visible points to create arrows');
       
       // Clean up existing arrows
       if (routeArrowsRef.current.length > 0) {
@@ -192,16 +210,16 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     }
 
     // STAGE 3: 3D CONVERSION
-    // Convert filtered LatLng points to 3D coordinates
+    // Convert visible LatLng points to 3D coordinates
     console.log('[ThreeJS] 📊 STAGE 3: 3D Conversion');
-    const polyline3D = polylineTo3D(filteredPoints, position);
+    const polyline3D = polylineTo3D(visiblePoints, position);
     
     console.log('[ThreeJS] ✅ 3D conversion complete:', {
       points3D: polyline3D.points.length,
       totalLength3D: polyline3D.totalLength.toFixed(2) + 'm',
     });
 
-    // STAGE 4: ARROW CREATION
+    // STAGE 4: ARROW CREATION WITH COLOR DIFFERENTIATION
     // Remove existing arrows if present
     if (routeArrowsRef.current.length > 0) {
       routeArrowsRef.current.forEach(arrow => {
@@ -221,32 +239,53 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       routeArrowsRef.current = [];
     }
 
-    console.log('[ThreeJS] 📊 STAGE 4: Arrow Creation');
+    console.log('[ThreeJS] 📊 STAGE 4: Arrow Creation with Color Differentiation');
 
     // Create arrow geometry components
     const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 8);
     const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8);
     
-    // Create teal material for arrows
-    const arrowMaterial = new THREE.MeshStandardMaterial({
-      color: 0x14b8a6, // Teal color
+    // Create materials for arrows
+    const defaultArrowMaterial = new THREE.MeshStandardMaterial({
+      color: 0x14b8a6, // Teal color for default arrows
       transparent: true,
       opacity: 0.8,
       metalness: 0.3,
       roughness: 0.7,
     });
 
+    const closestArrowMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff0000, // Red color for closest marker
+      transparent: true,
+      opacity: 0.9, // Slightly more opaque for emphasis
+      metalness: 0.3,
+      roughness: 0.7,
+    });
+
     // Create arrows at each 3D point (except last - no next position)
     const newArrows: THREE.Group[] = [];
+    let closestArrowCount = 0;
+    let defaultArrowCount = 0;
     
     for (let i = 0; i < polyline3D.points.length - 1; i++) {
       const currentPoint = polyline3D.points[i];
       const nextPoint = polyline3D.points[i + 1];
       
+      // Determine if this is the closest marker
+      const isClosestMarker = i === visibilityResult.closestMarkerIndex;
+      const arrowMaterial = isClosestMarker ? closestArrowMaterial : defaultArrowMaterial;
+      
+      if (isClosestMarker) {
+        closestArrowCount++;
+        console.log('[ThreeJS] 🔴 Creating RED arrow for closest marker at index:', i);
+      } else {
+        defaultArrowCount++;
+      }
+      
       // Create arrow group
       const arrowGroup = new THREE.Group();
       
-      // Create cone and cylinder
+      // Create cone and cylinder with appropriate material
       const cone = new THREE.Mesh(coneGeometry, arrowMaterial);
       const cylinder = new THREE.Mesh(cylinderGeometry, arrowMaterial);
       
@@ -281,18 +320,26 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     routeArrowsRef.current = newArrows;
     
     console.log('[ThreeJS] ✅ 3D directional arrows created and added to scene:', {
-      color: 'teal (#14b8a6)',
-      arrowCount: newArrows.length,
+      totalArrowCount: newArrows.length,
+      closestArrowCount: closestArrowCount,
+      defaultArrowCount: defaultArrowCount,
+      closestMarkerColor: 'RED (#ff0000)',
+      defaultMarkerColor: 'TEAL (#14b8a6)',
       dimensions: 'cone: 0.6m height, cylinder: 0.8m height',
       totalArrowHeight: '1.4m',
       visibilityZone: `${MIN_DISTANCE_MARKERS_FROM_USER}m - ${MAX_DISTANCE_MARKERS_FROM_USER}m from user`,
       maxSpacing: MAX_INTERPOLATION_SPACING + 'm between consecutive markers',
+      userFOV: '75° horizontal field of view',
+      closestMarkerInfo: visibilityResult.closestMarkerIndex >= 0 
+        ? `Index ${visibilityResult.closestMarkerIndex} at ${visibilityResult.visibleMarkers[visibilityResult.closestMarkerIndex].distance.toFixed(2)}m`
+        : 'N/A',
     });
-    console.log('[ThreeJS] 🌍 Arrows are WORLD-SPACE anchored (update on position change)');
+    console.log('[ThreeJS] 🎨 Color Differentiation: Closest marker = RED, All others = TEAL');
+    console.log('[ThreeJS] 🌍 Arrows are WORLD-SPACE anchored (update on position/heading change)');
     console.log('[ThreeJS] 🧭 Each arrow points toward the next route point');
-    console.log('[ThreeJS] 📏 Two-stage processing: Interpolation → Distance Filtering');
+    console.log('[ThreeJS] 📏 Three-stage processing: Interpolation → Visibility Filtering (Distance + FOV) → 3D Conversion');
 
-  }, [isStreetViewLoaded, hasRoute, position, routePolyline]);
+  }, [isStreetViewLoaded, hasRoute, position, pov.heading, routePolyline]);
 
   // Synchronize Three.js camera rotation with Street View POV
   useEffect(() => {

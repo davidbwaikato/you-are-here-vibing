@@ -11,7 +11,6 @@ import { RootState } from './store/store';
 function AppContent() {
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
   const isCheckingGoogleMaps = useRef(false);
-  const [isSplashVisible, setIsSplashVisible] = useState(true);
   const isLoaded = useSelector((state: RootState) => state.streetView.isLoaded);
 
   // Check if Google Maps is loaded - SINGLE SOURCE OF TRUTH
@@ -57,9 +56,6 @@ function AppContent() {
     if (isGoogleMapsLoaded && !isInitializing && isLoaded) {
       console.log('[App] ✅ All initialization steps complete (including panorama)');
       console.log('[App] 🎬 Ready to show main interface');
-      
-      // Directly set splash visibility to false when Street View is loaded
-      setIsSplashVisible(false);
     }
   }, [isGoogleMapsLoaded, isInitializing, isLoaded]);
 
@@ -71,7 +67,7 @@ function AppContent() {
 
   // Determine what to show
   const canShowStreetView = isGoogleMapsLoaded && !isInitializing;
-  const shouldShowSplash = isSplashVisible;
+  const shouldShowSplash = !canShowStreetView || !isLoaded;
 
   console.log('[App] Render state:', {
     isGoogleMapsLoaded,
@@ -92,20 +88,16 @@ function AppContent() {
           sourceAddress={sourceAddress}
           destinationAddress={destinationAddress}
           hasSourceError={hasSourceError}
-          isSplashVisible={shouldShowSplash}
         />
       )}
       
       {/* Show splash screen on top until panorama is ready */}
       {shouldShowSplash && (
-        <SplashScreen 
-          onComplete={() => setIsSplashVisible(false)} 
-          isVisible={shouldShowSplash}
-        />
+        <SplashScreen onComplete={() => {}} />
       )}
     </>
   );
-};
+}
 
 function App() {
   return (

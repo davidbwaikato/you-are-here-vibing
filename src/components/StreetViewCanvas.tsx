@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { motion, AnimatePresence } from 'framer-motion';
 import { RootState } from '@/store/store';
 import { setPosition, setPov, setZoom, setLoaded, setDestinationLocation, setSourceAddress, setDestinationAddress } from '@/store/streetViewSlice';
 import { MotionTrackingOverlay } from './MotionTrackingOverlay';
@@ -14,7 +13,6 @@ interface StreetViewCanvasProps {
   sourceAddress: string | null;
   destinationAddress: string | null;
   hasSourceError: boolean;
-  isSplashVisible: boolean;
 }
 
 export const StreetViewCanvas = ({
@@ -24,13 +22,11 @@ export const StreetViewCanvas = ({
   sourceAddress,
   destinationAddress,
   hasSourceError,
-  isSplashVisible,
 }: StreetViewCanvasProps) => {
   const dispatch = useDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const [isPanoramaReady, setIsPanoramaReady] = useState(false);
-  const [isPanoramaVisible, setIsPanoramaVisible] = useState(false);
   const isUpdatingPovRef = useRef(false);
   const hasInitializedRef = useRef(false);
   const shouldCleanupRef = useRef(false);
@@ -82,6 +78,10 @@ export const StreetViewCanvas = ({
     }
 
     console.log('[StreetView] ✅ All conditions met, initializing panorama...');
+    console.log('[StreetView] Container ref:', containerRef.current);
+    console.log('[StreetView] Position:', position);
+    console.log('[StreetView] POV:', pov);
+    console.log('[StreetView] Zoom:', zoom);
 
     hasInitializedRef.current = true;
     shouldCleanupRef.current = false;
@@ -142,18 +142,10 @@ export const StreetViewCanvas = ({
     panorama.addListener('status_changed', () => {
       const status = panorama.getStatus();
       console.log('[StreetView] 🎯 Status changed:', status);
-      
       if (status === 'OK') {
         console.log('[StreetView] ✅ Panorama ready! Setting isLoaded to true');
         dispatch(setLoaded(true));
         setIsPanoramaReady(true);
-        
-        // Slight delay to ensure render is complete
-        setTimeout(() => {
-          console.log('[StreetView] 🌟 Making panorama visible');
-          setIsPanoramaVisible(true);
-        }, 300);  // Small delay to ensure complete render
-        
         shouldCleanupRef.current = true;
       } else {
         console.log('[StreetView] ❌ Panorama status not OK:', status);
@@ -204,37 +196,24 @@ export const StreetViewCanvas = ({
   console.log('[StreetView] Rendering panorama container and overlays');
 
   return (
-    <AnimatePresence>
-      <motion.div 
+    <>
+      <div 
         ref={containerRef} 
-        initial={{ 
-          opacity: 0, 
-          backgroundColor: '#FFFFFF' 
-        }}
-        animate={{ 
-          opacity: isPanoramaVisible ? 1 : 0, 
-          backgroundColor: '#FFFFFF' 
-        }}
-        transition={{ 
-          duration: 0.5, 
-          ease: "easeInOut" 
-        }}
         className="fixed inset-0"
         style={{ 
           zIndex: 0,
           width: '100%',
           height: '100%',
-          backgroundColor: '#FFFFFF'
+          backgroundColor: '#000'
         }}
-      >
-        {isPanoramaReady && (
-          <>
-            <ThreeJsCanvas isReady={isPanoramaReady} />
-            <MotionTrackingOverlay panoramaRef={panoramaRef} />
-            <LocationOverlay />
-          </>
-        )}
-      </motion.div>
-    </AnimatePresence>
+      />
+      {isPanoramaReady && (
+        <>
+          <ThreeJsCanvas isReady={isPanoramaReady} />
+          <MotionTrackingOverlay panoramaRef={panoramaRef} />
+          <LocationOverlay />
+        </>
+      )}
+    </>
   );
 };
