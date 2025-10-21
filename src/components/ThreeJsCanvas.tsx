@@ -133,9 +133,64 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     };
   }, [isReady]);
 
-  // Setup middle-mouse drag navigation
+  // Shared teleport logic
+  const performTeleport = (triggerSource: 'ENTER_KEY' | 'MIDDLE_MOUSE_RELEASE') => {
+    console.log(`[ThreeJS] 🚀 Teleport triggered by: ${triggerSource}`);
+
+    // Check if we have visible markers
+    if (visibleMarkersRef.current.length === 0) {
+      console.log('[ThreeJS] ⚠️ Cannot teleport - no visible markers available');
+      return false;
+    }
+
+    // Check if we have a valid selected marker
+    if (selectedMarkerIndexRef.current < 0 || 
+        selectedMarkerIndexRef.current >= visibleMarkersRef.current.length) {
+      console.log('[ThreeJS] ⚠️ Cannot teleport - invalid marker index:', {
+        selectedIndex: selectedMarkerIndexRef.current,
+        availableMarkers: visibleMarkersRef.current.length,
+      });
+      return false;
+    }
+
+    const selectedMarker = visibleMarkersRef.current[selectedMarkerIndexRef.current];
+
+    console.log('[ThreeJS] 🚀 TELEPORTING to marker:', {
+      triggerSource,
+      index: selectedMarkerIndexRef.current,
+      totalMarkers: visibleMarkersRef.current.length,
+      position: { lat: selectedMarker.lat, lng: selectedMarker.lng },
+      heading: selectedMarker.heading,
+      markerData: selectedMarker,
+    });
+
+    // Update Redux state to trigger Street View panorama change
+    console.log('[ThreeJS] 📤 Dispatching setPosition with:', { 
+      lat: selectedMarker.lat, 
+      lng: selectedMarker.lng 
+    });
+    
+    dispatch(setPosition({ 
+      lat: selectedMarker.lat, 
+      lng: selectedMarker.lng 
+    }));
+
+    console.log('[ThreeJS] 📤 Dispatching setPov with:', { 
+      heading: selectedMarker.heading, 
+      pitch: 0 
+    });
+    
+    dispatch(setPov({ 
+      heading: selectedMarker.heading, 
+      pitch: 0 // Reset pitch to horizon
+    }));
+
+    return true;
+  };
+
+  // Setup middle-mouse drag navigation and release teleport
   useEffect(() => {
-    console.log('[ThreeJS] 🖱️ Setting up middle-mouse drag navigation...');
+    console.log('[ThreeJS] 🖱️ Setting up middle-mouse drag navigation and release teleport...');
 
     const handleMouseDown = (event: MouseEvent) => {
       // Only handle middle-mouse button (button code 1)
@@ -202,6 +257,21 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
         isDraggingRef.current = false;
         accumulatedDragRef.current = 0;
 
+        // Check if selected marker is NOT the closest (index 0)
+        if (selectedMarkerIndexRef.current !== 0) {
+          console.log('[ThreeJS] 🖱️ Selected marker is NOT closest - triggering teleport on release:', {
+            selectedIndex: selectedMarkerIndexRef.current,
+            closestIndex: 0,
+          });
+          
+          // Trigger teleport
+          performTeleport('MIDDLE_MOUSE_RELEASE');
+        } else {
+          console.log('[ThreeJS] 🖱️ Selected marker IS closest - skipping teleport on release:', {
+            selectedIndex: selectedMarkerIndexRef.current,
+          });
+        }
+
         // Prevent default
         event.preventDefault();
       }
@@ -218,15 +288,13 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []); // No dependencies - use refs for current values
+  }, [dispatch]); // Added dispatch as dependency
 
   // Setup Enter key teleport feature
   useEffect(() => {
     console.log('[ThreeJS] ⌨️ Setting up Enter key teleport...');
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      console.log('[ThreeJS] ⌨️ Key pressed:', event.key);
-
       // Only handle Enter key
       if (event.key !== 'Enter') {
         return;
@@ -234,55 +302,13 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
 
       console.log('[ThreeJS] ⌨️ Enter key detected! Starting teleport...');
 
-      // Check if we have visible markers
-      if (visibleMarkersRef.current.length === 0) {
-        console.log('[ThreeJS] ⚠️ Cannot teleport - no visible markers available');
-        return;
-      }
-
-      // Check if we have a valid selected marker
-      if (selectedMarkerIndexRef.current < 0 || 
-          selectedMarkerIndexRef.current >= visibleMarkersRef.current.length) {
-        console.log('[ThreeJS] ⚠️ Cannot teleport - invalid marker index:', {
-          selectedIndex: selectedMarkerIndexRef.current,
-          availableMarkers: visibleMarkersRef.current.length,
-        });
-        return;
-      }
-
-      const selectedMarker = visibleMarkersRef.current[selectedMarkerIndexRef.current];
-
-      console.log('[ThreeJS] 🚀 TELEPORTING to marker:', {
-        index: selectedMarkerIndexRef.current,
-        totalMarkers: visibleMarkersRef.current.length,
-        position: { lat: selectedMarker.lat, lng: selectedMarker.lng },
-        heading: selectedMarker.heading,
-        markerData: selectedMarker,
-      });
-
-      // Update Redux state to trigger Street View panorama change
-      console.log('[ThreeJS] 📤 Dispatching setPosition with:', { 
-        lat: selectedMarker.lat, 
-        lng: selectedMarker.lng 
-      });
+      // Trigger teleport
+      const success = performTeleport('ENTER_KEY');
       
-      dispatch(setPosition({ 
-        lat: selectedMarker.lat, 
-        lng: selectedMarker.lng 
-      }));
-
-      console.log('[ThreeJS] 📤 Dispatching setPov with:', { 
-        heading: selectedMarker.heading, 
-        pitch: 0 
-      });
-      
-      dispatch(setPov({ 
-        heading: selectedMarker.heading, 
-        pitch: 0 // Reset pitch to horizon
-      }));
-
-      // Prevent default Enter key behavior
-      event.preventDefault();
+      if (success) {
+        // Prevent default Enter key behavior
+        event.preventDefault();
+      }
     };
 
     // Add event listener to document
