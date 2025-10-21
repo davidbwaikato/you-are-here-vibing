@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { useRoutePolyline } from '@/hooks/useRoutePolyline';
@@ -23,16 +23,28 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
   const routeArrowsRef = useRef<THREE.Group[]>([]);
   const animationFrameRef = useRef<number | null>(null);
 
+  // Mouse drag state
+  const [selectedMarkerIndex, setSelectedMarkerIndex] = useState<number>(0);
+  const selectedMarkerIndexRef = useRef<number>(0); // Ref for event handlers
+  const isDraggingRef = useRef<boolean>(false);
+  const dragStartYRef = useRef<number>(0);
+  const accumulatedDragRef = useRef<number>(0);
+  const visibleMarkersCountRef = useRef<number>(0);
+
   // Get Street View position, POV, zoom, and loaded state from Redux store
   const { position, pov, zoom, isLoaded: isStreetViewLoaded } = useSelector((state: RootState) => state.streetView);
 
   // Get route polyline from Redux
   const { routePolyline, hasRoute } = useRoutePolyline();
 
+  // Sync ref with state
+  useEffect(() => {
+    selectedMarkerIndexRef.current = selectedMarkerIndex;
+  }, [selectedMarkerIndex]);
+
   // Initialize Three.js scene
   useEffect(() => {
     if (!isReady || !canvasRef.current) {
-      console.log('[ThreeJS] Not ready to initialize:', { isReady, hasCanvas: !!canvasRef.current });
       return;
     }
 
@@ -41,7 +53,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     // Create scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    console.log('[ThreeJS] ✅ Scene created');
 
     // Create camera with perspective matching typical human FOV
     const camera = new THREE.PerspectiveCamera(
@@ -52,7 +63,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     );
     camera.position.set(0, 0, 0); // Camera at origin (user's position)
     cameraRef.current = camera;
-    console.log('[ThreeJS] ✅ Camera created at origin');
 
     // Create renderer
     const renderer = new THREE.WebGLRenderer({
@@ -63,7 +73,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     rendererRef.current = renderer;
-    console.log('[ThreeJS] ✅ Renderer created');
 
     // Add some lighting for better visibility
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -72,7 +81,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
-    console.log('[ThreeJS] ✅ Lighting added');
 
     // Animation loop - renders the scene
     const animate = () => {
@@ -84,13 +92,10 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     };
 
     animate();
-    console.log('[ThreeJS] ✅ Animation loop started');
-    console.log('[ThreeJS] 🎬 Three.js initialization complete');
+    console.log('[ThreeJS] ✅ Three.js initialization complete');
 
     // Cleanup
     return () => {
-      console.log('[ThreeJS] 🧹 Cleaning up Three.js resources...');
-      
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -120,42 +125,115 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     };
   }, [isReady]);
 
-  // Create/update 3D route arrows when Street View position changes
+  // Setup middle-mouse drag navigation
+  useEffect(() => {
+    console.log('[ThreeJS] 🖱️ Setting up middle-mouse drag navigation...');
+
+    const handleMouseDown = (event: MouseEvent) => {
+      // Only handle middle-mouse button (button code 1)
+      if (event.button !== 1) {
+        return;
+      }
+
+      console.log('[ThreeJS] 🖱️ Middle-mouse button pressed - starting drag');
+      isDraggingRef.current = true;
+      dragStartYRef.current = event.clientY;
+      accumulatedDragRef.current = 0;
+
+      // Prevent default middle-mouse behavior (e.g., scroll mode)
+      event.preventDefault();
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      // Only handle if middle-mouse drag is active
+      if (!isDraggingRef.current) {
+        return;
+      }
+
+      console.log('[ThreeJS] 🖱️ MouseMove during drag:', {
+        clientY: event.clientY,
+        buttons: event.buttons,
+      });
+
+      // Calculate vertical movement since drag start
+      const deltaY = dragStartYRef.current - event.clientY; // Positive = drag up, Negative = drag down
+      accumulatedDragRef.current += deltaY;
+      dragStartYRef.current = event.clientY;
+
+      console.log('[ThreeJS] 🖱️ Drag calculation:', {
+        deltaY: deltaY.toFixed(1) + 'px',
+        accumulated: accumulatedDragRef.current.toFixed(1) + 'px',
+      });
+
+      // Check if we've accumulated enough movement (50 pixels = 1 marker step)
+      const DRAG_THRESHOLD = 50;
+      const markerSteps = Math.floor(Math.abs(accumulatedDragRef.current) / DRAG_THRESHOLD);
+
+      if (markerSteps > 0) {
+        const direction = accumulatedDragRef.current > 0 ? 1 : -1; // Positive = forward, Negative = backward
+        const newIndex = selectedMarkerIndexRef.current + (direction * markerSteps);
+
+        // Clamp to valid range [0, visibleMarkersCount - 1]
+        const clampedIndex = Math.max(0, Math.min(visibleMarkersCountRef.current - 1, newIndex));
+
+        console.log('[ThreeJS] 🖱️ Marker selection changed:', {
+          previousIndex: selectedMarkerIndexRef.current,
+          newIndex: clampedIndex,
+          direction: direction > 0 ? 'FORWARD' : 'BACKWARD',
+          markerSteps,
+        });
+
+        setSelectedMarkerIndex(clampedIndex);
+
+        // Reset accumulated drag after applying steps
+        accumulatedDragRef.current = accumulatedDragRef.current % DRAG_THRESHOLD;
+      }
+
+      // Prevent default to avoid unwanted scrolling
+      event.preventDefault();
+    };
+
+    const handleMouseUp = (event: MouseEvent) => {
+      // Only handle middle-mouse button
+      if (event.button !== 1) {
+        return;
+      }
+
+      if (isDraggingRef.current) {
+        console.log('[ThreeJS] 🖱️ Middle-mouse button released - ending drag');
+        isDraggingRef.current = false;
+        accumulatedDragRef.current = 0;
+
+        // Prevent default
+        event.preventDefault();
+      }
+    };
+
+    // Add event listeners to document for global interaction
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []); // No dependencies - use refs for current values
+
+  // Create/update 3D route arrows when Street View position changes OR selected marker changes
   useEffect(() => {
     if (!sceneRef.current || !isStreetViewLoaded || !hasRoute) {
-      console.log('[ThreeJS] Not ready to create route arrows:', {
-        hasScene: !!sceneRef.current,
-        isStreetViewLoaded,
-        hasRoute,
-      });
       return;
     }
 
-    console.log('[ThreeJS] 🏹 Creating 3D directional arrows with interpolation + visibility filtering...');
-    console.log('[ThreeJS] 📍 Current Street View position:', position);
-    console.log('[ThreeJS] 🧭 Current Street View heading:', pov.heading.toFixed(1) + '°');
-    console.log('[ThreeJS] ⚙️ Configuration:', {
-      maxInterpolationSpacing: MAX_INTERPOLATION_SPACING + 'm',
-      minDistanceFromUser: MIN_DISTANCE_MARKERS_FROM_USER + 'm',
-      maxDistanceFromUser: MAX_DISTANCE_MARKERS_FROM_USER + 'm',
-      userFOV: '75°',
-    });
+    console.log('[ThreeJS] 🏹 Creating 3D directional arrows...');
 
     // STAGE 1: INTERPOLATION
-    // Add interpolation points to ensure consistent spacing (≤ MAX_INTERPOLATION_SPACING)
-    console.log('[ThreeJS] 📊 STAGE 1: Interpolation');
     const interpolatedRoute = interpolatePolyline(routePolyline, MAX_INTERPOLATION_SPACING);
-    
-    console.log('[ThreeJS] ✅ Interpolation complete:', {
-      originalPoints: interpolatedRoute.originalPointCount,
-      addedPoints: interpolatedRoute.interpolatedPointCount,
-      totalPoints: interpolatedRoute.points.length,
-      totalDistance: interpolatedRoute.totalDistance.toFixed(2) + 'm',
-    });
 
     // STAGE 2: VISIBILITY FILTERING (Distance + FOV)
-    // Filter points to only show those within the visibility zone AND within user's FOV
-    console.log('[ThreeJS] 📊 STAGE 2: Visibility Filtering (Distance + FOV)');
     const visibilityResult = getVisibleMarkers(
       interpolatedRoute.points,
       position,
@@ -165,29 +243,20 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       MAX_DISTANCE_MARKERS_FROM_USER
     );
 
-    console.log('[ThreeJS] ✅ Visibility filtering complete:', {
-      inputPoints: interpolatedRoute.points.length,
-      visibleCount: visibilityResult.visibleCount,
-      closestMarkerIndex: visibilityResult.closestMarkerIndex,
-      closestMarkerDistance: visibilityResult.closestMarkerIndex >= 0 
-        ? visibilityResult.visibleMarkers[visibilityResult.closestMarkerIndex].distance.toFixed(2) + 'm'
-        : 'N/A',
-      visibilityZone: `${MIN_DISTANCE_MARKERS_FROM_USER}m - ${MAX_DISTANCE_MARKERS_FROM_USER}m`,
-      userFOV: '75°',
-    });
+    // Update visible markers count for drag navigation
+    visibleMarkersCountRef.current = visibilityResult.visibleCount;
+
+    // Initialize selected marker to closest marker on first load
+    if (visibilityResult.closestMarkerIndex >= 0 && selectedMarkerIndex === 0) {
+      setSelectedMarkerIndex(visibilityResult.closestMarkerIndex);
+    }
 
     // Extract LatLng coordinates from visible markers
     const visiblePoints = visibilityResult.visibleMarkers.map(marker => 
       interpolatedRoute.points[marker.originalRouteIndex]
     );
 
-    console.log('[ThreeJS] 📍 Extracted visible points:', {
-      visiblePointsCount: visiblePoints.length,
-    });
-
     if (visiblePoints.length < 2) {
-      console.warn('[ThreeJS] ⚠️ Not enough visible points to create arrows');
-      
       // Clean up existing arrows
       if (routeArrowsRef.current.length > 0) {
         routeArrowsRef.current.forEach(arrow => {
@@ -210,14 +279,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     }
 
     // STAGE 3: 3D CONVERSION
-    // Convert visible LatLng points to 3D coordinates
-    console.log('[ThreeJS] 📊 STAGE 3: 3D Conversion');
     const polyline3D = polylineTo3D(visiblePoints, position);
-    
-    console.log('[ThreeJS] ✅ 3D conversion complete:', {
-      points3D: polyline3D.points.length,
-      totalLength3D: polyline3D.totalLength.toFixed(2) + 'm',
-    });
 
     // STAGE 4: ARROW CREATION WITH COLOR DIFFERENTIATION
     // Remove existing arrows if present
@@ -235,11 +297,8 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
           }
         });
       });
-      console.log('[ThreeJS] 🗑️ Removed previous route arrows:', routeArrowsRef.current.length);
       routeArrowsRef.current = [];
     }
-
-    console.log('[ThreeJS] 📊 STAGE 4: Arrow Creation with Color Differentiation');
 
     // Create arrow geometry components
     const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 8);
@@ -254,8 +313,8 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       roughness: 0.7,
     });
 
-    const closestArrowMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff0000, // Red color for closest marker
+    const selectedArrowMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff0000, // Red color for selected marker
       transparent: true,
       opacity: 0.9, // Slightly more opaque for emphasis
       metalness: 0.3,
@@ -264,22 +323,17 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
 
     // Create arrows at each 3D point (except last - no next position)
     const newArrows: THREE.Group[] = [];
-    let closestArrowCount = 0;
-    let defaultArrowCount = 0;
     
     for (let i = 0; i < polyline3D.points.length - 1; i++) {
       const currentPoint = polyline3D.points[i];
       const nextPoint = polyline3D.points[i + 1];
       
-      // Determine if this is the closest marker
-      const isClosestMarker = i === visibilityResult.closestMarkerIndex;
-      const arrowMaterial = isClosestMarker ? closestArrowMaterial : defaultArrowMaterial;
+      // Determine if this is the selected marker
+      const isSelectedMarker = i === selectedMarkerIndex;
+      const arrowMaterial = isSelectedMarker ? selectedArrowMaterial : defaultArrowMaterial;
       
-      if (isClosestMarker) {
-        closestArrowCount++;
-        console.log('[ThreeJS] 🔴 Creating RED arrow for closest marker at index:', i);
-      } else {
-        defaultArrowCount++;
+      if (isSelectedMarker) {
+        console.log('[ThreeJS] 🔴 Creating RED arrow for selected marker at index:', i);
       }
       
       // Create arrow group
@@ -319,27 +373,12 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
 
     routeArrowsRef.current = newArrows;
     
-    console.log('[ThreeJS] ✅ 3D directional arrows created and added to scene:', {
-      totalArrowCount: newArrows.length,
-      closestArrowCount: closestArrowCount,
-      defaultArrowCount: defaultArrowCount,
-      closestMarkerColor: 'RED (#ff0000)',
-      defaultMarkerColor: 'TEAL (#14b8a6)',
-      dimensions: 'cone: 0.6m height, cylinder: 0.8m height',
-      totalArrowHeight: '1.4m',
-      visibilityZone: `${MIN_DISTANCE_MARKERS_FROM_USER}m - ${MAX_DISTANCE_MARKERS_FROM_USER}m from user`,
-      maxSpacing: MAX_INTERPOLATION_SPACING + 'm between consecutive markers',
-      userFOV: '75° horizontal field of view',
-      closestMarkerInfo: visibilityResult.closestMarkerIndex >= 0 
-        ? `Index ${visibilityResult.closestMarkerIndex} at ${visibilityResult.visibleMarkers[visibilityResult.closestMarkerIndex].distance.toFixed(2)}m`
-        : 'N/A',
+    console.log('[ThreeJS] ✅ Arrows created:', {
+      totalCount: newArrows.length,
+      selectedIndex: selectedMarkerIndex,
     });
-    console.log('[ThreeJS] 🎨 Color Differentiation: Closest marker = RED, All others = TEAL');
-    console.log('[ThreeJS] 🌍 Arrows are WORLD-SPACE anchored (update on position/heading change)');
-    console.log('[ThreeJS] 🧭 Each arrow points toward the next route point');
-    console.log('[ThreeJS] 📏 Three-stage processing: Interpolation → Visibility Filtering (Distance + FOV) → 3D Conversion');
 
-  }, [isStreetViewLoaded, hasRoute, position, pov.heading, routePolyline]);
+  }, [isStreetViewLoaded, hasRoute, position, pov.heading, routePolyline, selectedMarkerIndex]); // Added selectedMarkerIndex
 
   // Synchronize Three.js camera rotation with Street View POV
   useEffect(() => {
@@ -352,39 +391,18 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     cameraRef.current.rotation.order = 'YXZ';
     cameraRef.current.rotation.y = -headingRad;
     cameraRef.current.rotation.x = pitchRad;
-
-    console.log('[ThreeJS] 🔄 Camera rotation synced with Street View POV:', {
-      heading: pov.heading,
-      pitch: pov.pitch,
-      rotationOrder: 'YXZ',
-      xRotation: pitchRad,
-      yRotation: -headingRad,
-    });
   }, [pov]);
 
   // Synchronize Three.js camera FOV with Street View zoom
   useEffect(() => {
     if (!cameraRef.current) return;
 
-    // Street View zoom range: typically 0 (zoomed out) to 4+ (zoomed in)
-    // Three.js FOV: smaller FOV = more zoomed in (telephoto), larger FOV = zoomed out (wide angle)
-    // Base FOV at zoom=1 is 75°, we'll scale inversely with zoom
-    
-    const baseFOV = 75; // Default FOV at zoom level 1
+    const baseFOV = 75;
     const newFOV = baseFOV / zoom;
-    
-    // Clamp FOV to reasonable range (10° to 120°)
     const clampedFOV = Math.max(10, Math.min(120, newFOV));
     
     cameraRef.current.fov = clampedFOV;
     cameraRef.current.updateProjectionMatrix();
-
-    console.log('[ThreeJS] 🔍 Camera FOV synced with Street View zoom:', {
-      streetViewZoom: zoom,
-      calculatedFOV: newFOV,
-      clampedFOV: clampedFOV,
-      note: 'Higher zoom = smaller FOV (more magnification)'
-    });
   }, [zoom]);
 
   // Handle window resize
@@ -399,7 +417,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       cameraRef.current.updateProjectionMatrix();
 
       rendererRef.current.setSize(width, height);
-      console.log('[ThreeJS] 📐 Canvas resized to:', width, 'x', height);
     };
 
     window.addEventListener('resize', handleResize);
@@ -411,7 +428,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none"
       style={{
-        zIndex: 10, // Above Street View (0), below Video overlay (20)
+        zIndex: 10,
         width: '100%',
         height: '100%',
       }}
