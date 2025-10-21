@@ -16,13 +16,20 @@ interface ThreeJsCanvasProps {
   isReady: boolean;
 }
 
+interface ArrowAnimationState {
+  group: THREE.Group;
+  currentScale: number;
+  targetScale: number;
+  isAnimating: boolean;
+}
+
 export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
   const dispatch = useDispatch();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const routeArrowsRef = useRef<THREE.Group[]>([]);
+  const routeArrowsRef = useRef<ArrowAnimationState[]>([]);
   const animationFrameRef = useRef<number | null>(null);
 
   // Mouse drag state
@@ -90,9 +97,46 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
 
-    // Animation loop - renders the scene
+    // Animation loop - renders the scene AND handles scale animations
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
+
+      // Update arrow scale animations
+      let hasActiveAnimations = false;
+      routeArrowsRef.current.forEach(arrowState => {
+        if (arrowState.isAnimating) {
+          const diff = arrowState.targetScale - arrowState.currentScale;
+          const threshold = 0.001; // Stop animating when very close to target
+          
+          if (Math.abs(diff) > threshold) {
+            // Lerp towards target scale with smooth easing
+            const lerpFactor = 0.15; // Higher = faster animation (0.1-0.2 is good range)
+            arrowState.currentScale += diff * lerpFactor;
+            
+            // Apply current scale to arrow group
+            arrowState.group.scale.set(
+              arrowState.currentScale,
+              arrowState.currentScale,
+              arrowState.currentScale
+            );
+            
+            hasActiveAnimations = true;
+          } else {
+            // Animation complete - snap to target and stop animating
+            arrowState.currentScale = arrowState.targetScale;
+            arrowState.group.scale.set(
+              arrowState.targetScale,
+              arrowState.targetScale,
+              arrowState.targetScale
+            );
+            arrowState.isAnimating = false;
+          }
+        }
+      });
+
+      if (hasActiveAnimations) {
+        console.log('[ThreeJS] 🎬 Animating arrow scales...');
+      }
 
       if (rendererRef.current && sceneRef.current && cameraRef.current) {
         rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -100,7 +144,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     };
 
     animate();
-    console.log('[ThreeJS] ✅ Three.js initialization complete');
+    console.log('[ThreeJS] ✅ Three.js initialization complete with animation loop');
 
     // Cleanup
     return () => {
@@ -109,8 +153,8 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       }
 
       // Clean up arrows
-      routeArrowsRef.current.forEach(arrow => {
-        arrow.traverse((child) => {
+      routeArrowsRef.current.forEach(arrowState => {
+        arrowState.group.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.geometry.dispose();
             if (Array.isArray(child.material)) {
@@ -414,9 +458,9 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     if (visiblePoints.length < 2) {
       // Clean up existing arrows
       if (routeArrowsRef.current.length > 0) {
-        routeArrowsRef.current.forEach(arrow => {
-          sceneRef.current?.remove(arrow);
-          arrow.traverse((child) => {
+        routeArrowsRef.current.forEach(arrowState => {
+          sceneRef.current?.remove(arrowState.group);
+          arrowState.group.traverse((child) => {
             if (child instanceof THREE.Mesh) {
               child.geometry.dispose();
               if (Array.isArray(child.material)) {
@@ -436,12 +480,12 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     // STAGE 3: 3D CONVERSION
     const polyline3D = polylineTo3D(visiblePoints, position);
 
-    // STAGE 4: ARROW CREATION WITH COLOR DIFFERENTIATION
+    // STAGE 4: ARROW CREATION WITH COLOR AND ANIMATED SIZE DIFFERENTIATION
     // Remove existing arrows if present
     if (routeArrowsRef.current.length > 0) {
-      routeArrowsRef.current.forEach(arrow => {
-        sceneRef.current?.remove(arrow);
-        arrow.traverse((child) => {
+      routeArrowsRef.current.forEach(arrowState => {
+        sceneRef.current?.remove(arrowState.group);
+        arrowState.group.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.geometry.dispose();
             if (Array.isArray(child.material)) {
@@ -456,22 +500,8 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     }
 
     // Create arrow geometry components with increased segments for smoother appearance
-    // ConeGeometry(radius, height, radialSegments, heightSegments)
-    // CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments)
-    const coneGeometry = new THREE.ConeGeometry(
-      0.3,  // radius
-      0.6,  // height
-      32,   // radialSegments (increased from 8 to 32 for smoother circular profile)
-      1     // heightSegments
-    );
-    
-    const cylinderGeometry = new THREE.CylinderGeometry(
-      0.15, // radiusTop
-      0.15, // radiusBottom
-      0.8,  // height
-      32,   // radialSegments (increased from 8 to 32 for smoother circular profile)
-      1     // heightSegments
-    );
+    const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 32, 1);
+    const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 32, 1);
     
     console.log('[ThreeJS] 🎨 Arrow geometry created with high-quality segments:', {
       coneSegments: 32,
@@ -497,7 +527,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     });
 
     // Create arrows at each 3D point (except last - no next position)
-    const newArrows: THREE.Group[] = [];
+    const newArrows: ArrowAnimationState[] = [];
     
     for (let i = 0; i < polyline3D.points.length - 1; i++) {
       const currentPoint = polyline3D.points[i];
@@ -508,7 +538,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       const arrowMaterial = isSelectedMarker ? selectedArrowMaterial : defaultArrowMaterial;
       
       if (isSelectedMarker) {
-        console.log('[ThreeJS] 🔴 Creating RED arrow for selected marker at index:', i);
+        console.log('[ThreeJS] 🔴 Creating RED and ANIMATED arrow for selected marker at index:', i);
       }
       
       // Create arrow group
@@ -528,6 +558,30 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       // Position arrow at current point
       arrowGroup.position.set(currentPoint.x, currentPoint.y, currentPoint.z);
       
+      // Set up animation state for this arrow - UPDATED TO 2.0x (200%)
+      const targetScale = isSelectedMarker ? 2.0 : 1.0;
+      const currentScale = isSelectedMarker ? 1.0 : 1.0; // Start at 1.0 for smooth animation
+      
+      // Apply initial scale
+      arrowGroup.scale.set(currentScale, currentScale, currentScale);
+      
+      // Create animation state
+      const arrowState: ArrowAnimationState = {
+        group: arrowGroup,
+        currentScale: currentScale,
+        targetScale: targetScale,
+        isAnimating: isSelectedMarker, // Only animate if selected
+      };
+      
+      if (isSelectedMarker) {
+        console.log('[ThreeJS] 🎬 Starting scale-up animation for selected marker:', {
+          index: i,
+          currentScale,
+          targetScale,
+          scaleIncrease: '100% (2.0x)',
+        });
+      }
+      
       // Calculate direction vector
       const direction = new THREE.Vector3(
         nextPoint.x - currentPoint.x,
@@ -543,18 +597,61 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       arrowGroup.setRotationFromQuaternion(quaternion);
       
       sceneRef.current?.add(arrowGroup);
-      newArrows.push(arrowGroup);
+      newArrows.push(arrowState);
     }
 
     routeArrowsRef.current = newArrows;
     
-    console.log('[ThreeJS] ✅ Arrows created:', {
+    console.log('[ThreeJS] ✅ Arrows created with animated visual feedback:', {
       totalCount: newArrows.length,
       selectedIndex: selectedMarkerIndex,
-      markersWithHeading: markersWithHeading.length,
+      animatingArrows: newArrows.filter(a => a.isAnimating).length,
+      selectedMarkerVisuals: {
+        color: 'RED',
+        targetScale: '2.0x (100% larger - DOUBLE SIZE)',
+        animation: 'SCALE UP',
+      },
+      defaultMarkerVisuals: {
+        color: 'TEAL',
+        targetScale: '1.0x (normal size)',
+        animation: 'NONE',
+      },
     });
 
   }, [isStreetViewLoaded, hasRoute, position, pov.heading, routePolyline, selectedMarkerIndex]); // Added selectedMarkerIndex
+
+  // Update arrow animations when selected marker changes
+  useEffect(() => {
+    if (routeArrowsRef.current.length === 0) {
+      return;
+    }
+
+    console.log('[ThreeJS] 🎬 Updating arrow animations for selection change:', {
+      selectedIndex: selectedMarkerIndex,
+      totalArrows: routeArrowsRef.current.length,
+    });
+
+    // Update target scales and start animations - UPDATED TO 2.0x (200%)
+    routeArrowsRef.current.forEach((arrowState, index) => {
+      const isSelected = index === selectedMarkerIndex;
+      const newTargetScale = isSelected ? 2.0 : 1.0;
+      
+      // Only update if target scale actually changed
+      if (arrowState.targetScale !== newTargetScale) {
+        arrowState.targetScale = newTargetScale;
+        arrowState.isAnimating = true;
+        
+        console.log('[ThreeJS] 🎬 Arrow animation updated:', {
+          index,
+          isSelected,
+          currentScale: arrowState.currentScale,
+          newTargetScale,
+          direction: isSelected ? 'SCALE UP (to 2.0x)' : 'SCALE DOWN (to 1.0x)',
+        });
+      }
+    });
+
+  }, [selectedMarkerIndex]);
 
   // Synchronize Three.js camera rotation with Street View POV
   useEffect(() => {
