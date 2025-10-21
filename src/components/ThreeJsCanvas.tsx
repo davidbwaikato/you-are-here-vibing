@@ -23,6 +23,7 @@ interface ArrowAnimationState {
   isAnimating: boolean;
   coneMaterial: THREE.MeshStandardMaterial;
   cylinderMaterial: THREE.MeshStandardMaterial;
+  scaleTimeoutId?: number; // Timeout ID for delayed scaling animation
 }
 
 export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
@@ -185,8 +186,13 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
         cancelAnimationFrame(animationFrameRef.current);
       }
 
-      // Clean up arrows
+      // Clean up arrows and their pending timeouts
       routeArrowsRef.current.forEach(arrowState => {
+        // Clear any pending scale animation timeouts
+        if (arrowState.scaleTimeoutId !== undefined) {
+          clearTimeout(arrowState.scaleTimeoutId);
+        }
+        
         arrowState.group.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.geometry.dispose();
@@ -489,9 +495,16 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     });
 
     if (visiblePoints.length < 2) {
-      // Clean up existing arrows
+      // Clean up existing arrows and their pending timeouts
       if (routeArrowsRef.current.length > 0) {
+        console.log('[ThreeJS] 🧹 Cleaning up arrows and cancelling pending animations...');
         routeArrowsRef.current.forEach(arrowState => {
+          // Cancel any pending scale animation timeouts
+          if (arrowState.scaleTimeoutId !== undefined) {
+            clearTimeout(arrowState.scaleTimeoutId);
+            console.log('[ThreeJS] ⏸️ Cancelled pending scale animation timeout');
+          }
+          
           sceneRef.current?.remove(arrowState.group);
           arrowState.group.traverse((child) => {
             if (child instanceof THREE.Mesh) {
@@ -513,10 +526,17 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     // STAGE 3: 3D CONVERSION
     const polyline3D = polylineTo3D(visiblePoints, position);
 
-    // STAGE 4: ARROW CREATION WITH COLOR, ANIMATED SIZE, AND DISTANCE-BASED OPACITY
-    // Remove existing arrows if present
+    // STAGE 4: ARROW CREATION WITH COLOR, DELAYED ANIMATED SIZE, AND DISTANCE-BASED OPACITY
+    // Remove existing arrows if present and cancel their pending timeouts
     if (routeArrowsRef.current.length > 0) {
+      console.log('[ThreeJS] 🧹 Route markers regenerated - cancelling all pending scale animations...');
       routeArrowsRef.current.forEach(arrowState => {
+        // Cancel any pending scale animation timeouts
+        if (arrowState.scaleTimeoutId !== undefined) {
+          clearTimeout(arrowState.scaleTimeoutId);
+          console.log('[ThreeJS] ⏸️ Cancelled pending scale animation timeout for arrow');
+        }
+        
         sceneRef.current?.remove(arrowState.group);
         arrowState.group.traverse((child) => {
           if (child instanceof THREE.Mesh) {
@@ -553,6 +573,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       const isSelectedMarker = i === selectedMarkerIndex;
       
       // Create SEPARATE materials for each arrow (required for individual opacity control)
+      // IMMEDIATE COLOR CHANGE - no delay
       const coneMaterial = new THREE.MeshStandardMaterial({
         color: isSelectedMarker ? 0xff0000 : 0x14b8a6, // Red for selected, teal for default
         transparent: true, // CRITICAL: Enable transparency for opacity to work
@@ -572,7 +593,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       });
       
       if (isSelectedMarker) {
-        console.log('[ThreeJS] 🔴 Creating RED and ANIMATED arrow for selected marker at index:', i);
+        console.log('[ThreeJS] 🔴 Creating RED arrow for selected marker at index (color IMMEDIATE):', i);
       }
       
       // Create arrow group
@@ -593,29 +614,46 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       arrowGroup.position.set(currentPoint.x, currentPoint.y, currentPoint.z);
       
       // Set up animation state for this arrow - 2.0x (200%)
-      const targetScale = isSelectedMarker ? 2.0 : 1.0;
-      const currentScale = isSelectedMarker ? 1.0 : 1.0; // Start at 1.0 for smooth animation
+      // Start at 1.0x scale for all arrows (no immediate scale change)
+      const currentScale = 1.0;
       
-      // Apply initial scale
+      // Apply initial scale (1.0x for all)
       arrowGroup.scale.set(currentScale, currentScale, currentScale);
       
       // Create animation state with material references for opacity updates
       const arrowState: ArrowAnimationState = {
         group: arrowGroup,
         currentScale: currentScale,
-        targetScale: targetScale,
-        isAnimating: isSelectedMarker, // Only animate if selected
+        targetScale: 1.0, // Will be updated after delay if selected
+        isAnimating: false, // Will be set to true after delay if selected
         coneMaterial: coneMaterial, // Store material reference for opacity updates
         cylinderMaterial: cylinderMaterial, // Store material reference for opacity updates
+        scaleTimeoutId: undefined, // Will store timeout ID if scaling is scheduled
       };
       
+      // DELAYED SCALING ANIMATION - 0.5s delay before starting
       if (isSelectedMarker) {
-        console.log('[ThreeJS] 🎬 Starting scale-up animation for selected marker:', {
+        console.log('[ThreeJS] ⏱️ Scheduling scale-up animation with 0.5s delay for selected marker:', {
           index: i,
           currentScale,
-          targetScale,
-          scaleIncrease: '100% (2.0x)',
+          targetScaleAfterDelay: 2.0,
+          delay: '500ms',
         });
+        
+        // Schedule the scale animation to start after 0.5 seconds
+        const timeoutId = window.setTimeout(() => {
+          console.log('[ThreeJS] 🎬 Starting delayed scale-up animation for selected marker:', {
+            index: i,
+            currentScale: arrowState.currentScale,
+            targetScale: 2.0,
+          });
+          
+          arrowState.targetScale = 2.0;
+          arrowState.isAnimating = true;
+          arrowState.scaleTimeoutId = undefined; // Clear timeout ID after execution
+        }, 500); // 0.5 second delay
+        
+        arrowState.scaleTimeoutId = timeoutId;
       }
       
       // Calculate direction vector
@@ -638,19 +676,19 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
 
     routeArrowsRef.current = newArrows;
     
-    console.log('[ThreeJS] ✅ Arrows created with animated visual feedback and distance-based opacity:', {
+    console.log('[ThreeJS] ✅ Arrows created with IMMEDIATE color change and DELAYED scaling animation:', {
       totalCount: newArrows.length,
       selectedIndex: selectedMarkerIndex,
-      animatingArrows: newArrows.filter(a => a.isAnimating).length,
+      scheduledAnimations: newArrows.filter(a => a.scaleTimeoutId !== undefined).length,
       selectedMarkerVisuals: {
-        color: 'RED',
-        targetScale: '2.0x (100% larger - DOUBLE SIZE)',
-        animation: 'SCALE UP',
+        color: 'RED (IMMEDIATE - 0ms)',
+        targetScale: '2.0x (DELAYED - 500ms)',
+        animation: 'SCALE UP (after 0.5s delay)',
         opacity: 'DISTANCE-BASED (5m=70%, 35m+=100%)',
       },
       defaultMarkerVisuals: {
-        color: 'TEAL',
-        targetScale: '1.0x (normal size)',
+        color: 'TEAL (IMMEDIATE)',
+        targetScale: '1.0x (no animation)',
         animation: 'NONE',
         opacity: 'DISTANCE-BASED (5m=70%, 35m+=100%)',
       },
@@ -669,29 +707,62 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       totalArrows: routeArrowsRef.current.length,
     });
 
-    // Update target scales, materials, and start animations - 2.0x (200%)
+    // Update target scales, materials, and schedule animations - 2.0x (200%)
     routeArrowsRef.current.forEach((arrowState, index) => {
       const isSelected = index === selectedMarkerIndex;
-      const newTargetScale = isSelected ? 2.0 : 1.0;
       const newColor = isSelected ? 0xff0000 : 0x14b8a6; // Red for selected, teal for default
       
-      // Update material colors
+      // IMMEDIATE COLOR CHANGE - no delay
       arrowState.coneMaterial.color.setHex(newColor);
       arrowState.cylinderMaterial.color.setHex(newColor);
       
-      // Only update if target scale actually changed
-      if (arrowState.targetScale !== newTargetScale) {
-        arrowState.targetScale = newTargetScale;
-        arrowState.isAnimating = true;
-        
-        console.log('[ThreeJS] 🎬 Arrow animation updated:', {
+      console.log('[ThreeJS] 🎨 Arrow color changed IMMEDIATELY:', {
+        index,
+        isSelected,
+        color: isSelected ? 'RED' : 'TEAL',
+      });
+      
+      // Cancel any existing pending scale animation timeout
+      if (arrowState.scaleTimeoutId !== undefined) {
+        clearTimeout(arrowState.scaleTimeoutId);
+        arrowState.scaleTimeoutId = undefined;
+        console.log('[ThreeJS] ⏸️ Cancelled previous pending scale animation for arrow:', index);
+      }
+      
+      // DELAYED SCALING ANIMATION
+      if (isSelected) {
+        // Schedule scale-up animation with 0.5s delay
+        console.log('[ThreeJS] ⏱️ Scheduling scale-up animation with 0.5s delay:', {
           index,
-          isSelected,
           currentScale: arrowState.currentScale,
-          newTargetScale,
-          direction: isSelected ? 'SCALE UP (to 2.0x)' : 'SCALE DOWN (to 1.0x)',
-          color: isSelected ? 'RED' : 'TEAL',
+          targetScaleAfterDelay: 2.0,
         });
+        
+        const timeoutId = window.setTimeout(() => {
+          console.log('[ThreeJS] 🎬 Starting delayed scale-up animation:', {
+            index,
+            currentScale: arrowState.currentScale,
+            targetScale: 2.0,
+          });
+          
+          arrowState.targetScale = 2.0;
+          arrowState.isAnimating = true;
+          arrowState.scaleTimeoutId = undefined; // Clear timeout ID after execution
+        }, 500); // 0.5 second delay
+        
+        arrowState.scaleTimeoutId = timeoutId;
+      } else {
+        // Deselected - scale down immediately (no delay for scale-down)
+        if (arrowState.targetScale !== 1.0) {
+          console.log('[ThreeJS] 🎬 Starting immediate scale-down animation:', {
+            index,
+            currentScale: arrowState.currentScale,
+            targetScale: 1.0,
+          });
+          
+          arrowState.targetScale = 1.0;
+          arrowState.isAnimating = true;
+        }
       }
     });
 
