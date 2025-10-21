@@ -21,6 +21,8 @@ interface ArrowAnimationState {
   currentScale: number;
   targetScale: number;
   isAnimating: boolean;
+  coneMaterial: THREE.MeshStandardMaterial;
+  cylinderMaterial: THREE.MeshStandardMaterial;
 }
 
 export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
@@ -97,13 +99,14 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
 
-    // Animation loop - renders the scene AND handles scale animations
+    // Animation loop - renders the scene AND handles scale animations AND opacity updates
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
 
-      // Update arrow scale animations
+      // Update arrow scale animations AND distance-based opacity
       let hasActiveAnimations = false;
       routeArrowsRef.current.forEach(arrowState => {
+        // SCALE ANIMATION
         if (arrowState.isAnimating) {
           const diff = arrowState.targetScale - arrowState.currentScale;
           const threshold = 0.001; // Stop animating when very close to target
@@ -132,6 +135,36 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
             arrowState.isAnimating = false;
           }
         }
+
+        // DISTANCE-BASED OPACITY UPDATE
+        // Calculate distance from camera (user position at origin) to arrow
+        const arrowPosition = arrowState.group.position;
+        const distance = Math.sqrt(
+          arrowPosition.x * arrowPosition.x +
+          arrowPosition.y * arrowPosition.y +
+          arrowPosition.z * arrowPosition.z
+        );
+
+        // Apply opacity mapping:
+        // 5m = 70% (0.7)
+        // +10% per 10m
+        // 35m+ = 100% (1.0)
+        let opacity: number;
+        if (distance <= 5) {
+          opacity = 0.7;
+        } else if (distance >= 35) {
+          opacity = 1.0;
+        } else {
+          // Linear interpolation: 0.7 + (distance - 5) / 10 * 0.1
+          opacity = 0.7 + ((distance - 5) / 10) * 0.1;
+        }
+
+        // Clamp to valid range [0.7, 1.0]
+        opacity = Math.max(0.7, Math.min(1.0, opacity));
+
+        // Apply opacity to both cone and cylinder materials
+        arrowState.coneMaterial.opacity = opacity;
+        arrowState.cylinderMaterial.opacity = opacity;
       });
 
       if (hasActiveAnimations) {
@@ -480,7 +513,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     // STAGE 3: 3D CONVERSION
     const polyline3D = polylineTo3D(visiblePoints, position);
 
-    // STAGE 4: ARROW CREATION WITH COLOR AND ANIMATED SIZE DIFFERENTIATION
+    // STAGE 4: ARROW CREATION WITH COLOR, ANIMATED SIZE, AND DISTANCE-BASED OPACITY
     // Remove existing arrows if present
     if (routeArrowsRef.current.length > 0) {
       routeArrowsRef.current.forEach(arrowState => {
@@ -508,23 +541,6 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       cylinderSegments: 32,
       improvement: '4x smoother than default (8 segments)',
     });
-    
-    // Create materials for arrows
-    const defaultArrowMaterial = new THREE.MeshStandardMaterial({
-      color: 0x14b8a6, // Teal color for default arrows
-      transparent: true,
-      opacity: 0.8,
-      metalness: 0.3,
-      roughness: 0.7,
-    });
-
-    const selectedArrowMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff0000, // Red color for selected marker
-      transparent: true,
-      opacity: 0.9, // Slightly more opaque for emphasis
-      metalness: 0.3,
-      roughness: 0.7,
-    });
 
     // Create arrows at each 3D point (except last - no next position)
     const newArrows: ArrowAnimationState[] = [];
@@ -535,7 +551,25 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       
       // Determine if this is the selected marker
       const isSelectedMarker = i === selectedMarkerIndex;
-      const arrowMaterial = isSelectedMarker ? selectedArrowMaterial : defaultArrowMaterial;
+      
+      // Create SEPARATE materials for each arrow (required for individual opacity control)
+      const coneMaterial = new THREE.MeshStandardMaterial({
+        color: isSelectedMarker ? 0xff0000 : 0x14b8a6, // Red for selected, teal for default
+        transparent: true, // CRITICAL: Enable transparency for opacity to work
+        opacity: 0.8, // Initial opacity (will be updated per frame based on distance)
+        metalness: 0.3,
+        roughness: 0.7,
+        depthWrite: false, // Prevent z-fighting issues with transparent objects
+      });
+
+      const cylinderMaterial = new THREE.MeshStandardMaterial({
+        color: isSelectedMarker ? 0xff0000 : 0x14b8a6, // Red for selected, teal for default
+        transparent: true, // CRITICAL: Enable transparency for opacity to work
+        opacity: 0.8, // Initial opacity (will be updated per frame based on distance)
+        metalness: 0.3,
+        roughness: 0.7,
+        depthWrite: false, // Prevent z-fighting issues with transparent objects
+      });
       
       if (isSelectedMarker) {
         console.log('[ThreeJS] 🔴 Creating RED and ANIMATED arrow for selected marker at index:', i);
@@ -544,9 +578,9 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       // Create arrow group
       const arrowGroup = new THREE.Group();
       
-      // Create cone and cylinder with appropriate material
-      const cone = new THREE.Mesh(coneGeometry, arrowMaterial);
-      const cylinder = new THREE.Mesh(cylinderGeometry, arrowMaterial);
+      // Create cone and cylinder with separate materials
+      const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+      const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
       
       // Position cone at top of cylinder
       cone.position.y = 0.7;
@@ -558,19 +592,21 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       // Position arrow at current point
       arrowGroup.position.set(currentPoint.x, currentPoint.y, currentPoint.z);
       
-      // Set up animation state for this arrow - UPDATED TO 2.0x (200%)
+      // Set up animation state for this arrow - 2.0x (200%)
       const targetScale = isSelectedMarker ? 2.0 : 1.0;
       const currentScale = isSelectedMarker ? 1.0 : 1.0; // Start at 1.0 for smooth animation
       
       // Apply initial scale
       arrowGroup.scale.set(currentScale, currentScale, currentScale);
       
-      // Create animation state
+      // Create animation state with material references for opacity updates
       const arrowState: ArrowAnimationState = {
         group: arrowGroup,
         currentScale: currentScale,
         targetScale: targetScale,
         isAnimating: isSelectedMarker, // Only animate if selected
+        coneMaterial: coneMaterial, // Store material reference for opacity updates
+        cylinderMaterial: cylinderMaterial, // Store material reference for opacity updates
       };
       
       if (isSelectedMarker) {
@@ -602,7 +638,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
 
     routeArrowsRef.current = newArrows;
     
-    console.log('[ThreeJS] ✅ Arrows created with animated visual feedback:', {
+    console.log('[ThreeJS] ✅ Arrows created with animated visual feedback and distance-based opacity:', {
       totalCount: newArrows.length,
       selectedIndex: selectedMarkerIndex,
       animatingArrows: newArrows.filter(a => a.isAnimating).length,
@@ -610,11 +646,13 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
         color: 'RED',
         targetScale: '2.0x (100% larger - DOUBLE SIZE)',
         animation: 'SCALE UP',
+        opacity: 'DISTANCE-BASED (5m=70%, 35m+=100%)',
       },
       defaultMarkerVisuals: {
         color: 'TEAL',
         targetScale: '1.0x (normal size)',
         animation: 'NONE',
+        opacity: 'DISTANCE-BASED (5m=70%, 35m+=100%)',
       },
     });
 
@@ -631,10 +669,15 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       totalArrows: routeArrowsRef.current.length,
     });
 
-    // Update target scales and start animations - UPDATED TO 2.0x (200%)
+    // Update target scales, materials, and start animations - 2.0x (200%)
     routeArrowsRef.current.forEach((arrowState, index) => {
       const isSelected = index === selectedMarkerIndex;
       const newTargetScale = isSelected ? 2.0 : 1.0;
+      const newColor = isSelected ? 0xff0000 : 0x14b8a6; // Red for selected, teal for default
+      
+      // Update material colors
+      arrowState.coneMaterial.color.setHex(newColor);
+      arrowState.cylinderMaterial.color.setHex(newColor);
       
       // Only update if target scale actually changed
       if (arrowState.targetScale !== newTargetScale) {
@@ -647,6 +690,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
           currentScale: arrowState.currentScale,
           newTargetScale,
           direction: isSelected ? 'SCALE UP (to 2.0x)' : 'SCALE DOWN (to 1.0x)',
+          color: isSelected ? 'RED' : 'TEAL',
         });
       }
     });
