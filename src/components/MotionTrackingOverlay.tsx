@@ -102,6 +102,10 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
   const lastFistTopYRef = useRef<number | null>(null);
   const wasFistBeforeDisappearRef = useRef<boolean>(false);
   
+  // NEW: Sustained open-hand detection to prevent false positives
+  const openHandFrameCountRef = useRef<number>(0);
+  const REQUIRED_OPEN_HAND_FRAMES = 5; // Require 5 consecutive frames of open hand
+  
   // Constants for fist tracking
   const FIST_VERTICAL_THRESHOLD = 50; // Same as middle-mouse drag threshold
 
@@ -121,6 +125,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         trackedHandRef.current = null;
         lastFistTopYRef.current = null;
         wasFistBeforeDisappearRef.current = false;
+        openHandFrameCountRef.current = 0;
         dispatch(setFistTrackingActive(false));
       }
       return;
@@ -141,6 +146,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
           trackedHandRef.current = null;
           lastFistTopYRef.current = null;
           wasFistBeforeDisappearRef.current = false;
+          openHandFrameCountRef.current = 0;
           dispatch(setFistTrackingActive(false));
         }
         return;
@@ -150,6 +156,12 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
       if (leftFist || rightFist) {
         const currentHand = leftFist ? 'left' : 'right';
         const handData = leftFist ? result.leftHand : result.rightHand;
+
+        // Reset open-hand counter when fist is detected
+        if (openHandFrameCountRef.current > 0) {
+          console.log('[Fist Tracking] Fist detected - resetting open-hand counter from', openHandFrameCountRef.current);
+          openHandFrameCountRef.current = 0;
+        }
 
         // Start tracking new hand
         if (trackedHandRef.current === null) {
@@ -207,6 +219,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
           trackedHandRef.current = currentHand;
           lastFistTopYRef.current = minY;
           wasFistBeforeDisappearRef.current = true;
+          openHandFrameCountRef.current = 0;
         }
         return;
       }
@@ -220,27 +233,43 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
           // Sub-case 3a: Tracked hand disappeared but was fist before
           if (!trackedHandData.detected && wasFistBeforeDisappearRef.current) {
             console.log(`[Fist Tracking] ${trackedHandRef.current} hand disappeared - maintaining tracking state`);
+            // Reset open-hand counter when hand disappears
+            if (openHandFrameCountRef.current > 0) {
+              console.log('[Fist Tracking] Hand disappeared - resetting open-hand counter from', openHandFrameCountRef.current);
+              openHandFrameCountRef.current = 0;
+            }
             // Keep tracking state, wait for hand to reappear
             return;
           }
 
           // Sub-case 3b: Tracked hand reappeared and is now open
           if (trackedHandData.detected && !trackedHandData.isFist && wasFistBeforeDisappearRef.current) {
-            console.log(`[Fist Tracking] ${trackedHandRef.current} hand opened - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
+            // Increment open-hand frame counter
+            openHandFrameCountRef.current++;
             
-            // Trigger teleport via callback
-            if (onTeleportToMarker) {
-              console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
-              onTeleportToMarker(selectedMarkerIndexRef.current);
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand detected as OPEN - frame count: ${openHandFrameCountRef.current}/${REQUIRED_OPEN_HAND_FRAMES}`);
+            
+            // Only trigger teleport after sustained open-hand detection
+            if (openHandFrameCountRef.current >= REQUIRED_OPEN_HAND_FRAMES) {
+              console.log(`[Fist Tracking] ✅ SUSTAINED OPEN HAND CONFIRMED (${openHandFrameCountRef.current} frames) - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
+              
+              // Trigger teleport via callback
+              if (onTeleportToMarker) {
+                console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
+                onTeleportToMarker(selectedMarkerIndexRef.current);
+              } else {
+                console.warn('[Fist Tracking] onTeleportToMarker callback not provided!');
+              }
+              
+              // Reset tracking state
+              trackedHandRef.current = null;
+              lastFistTopYRef.current = null;
+              wasFistBeforeDisappearRef.current = false;
+              openHandFrameCountRef.current = 0;
+              dispatch(setFistTrackingActive(false));
             } else {
-              console.warn('[Fist Tracking] onTeleportToMarker callback not provided!');
+              console.log(`[Fist Tracking] ⏳ Waiting for sustained open hand... (${openHandFrameCountRef.current}/${REQUIRED_OPEN_HAND_FRAMES} frames)`);
             }
-            
-            // Reset tracking state
-            trackedHandRef.current = null;
-            lastFistTopYRef.current = null;
-            wasFistBeforeDisappearRef.current = false;
-            dispatch(setFistTrackingActive(false));
             return;
           }
 
@@ -250,6 +279,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
             trackedHandRef.current = null;
             lastFistTopYRef.current = null;
             wasFistBeforeDisappearRef.current = false;
+            openHandFrameCountRef.current = 0;
             dispatch(setFistTrackingActive(false));
             return;
           }
@@ -299,6 +329,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
       trackedHandRef.current = null;
       lastFistTopYRef.current = null;
       wasFistBeforeDisappearRef.current = false;
+      openHandFrameCountRef.current = 0;
       dispatch(setFistTrackingActive(false));
       
       // Clear canvases
@@ -364,6 +395,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         trackedHandRef.current = null;
         lastFistTopYRef.current = null;
         wasFistBeforeDisappearRef.current = false;
+        openHandFrameCountRef.current = 0;
         dispatch(setFistTrackingActive(false));
         
         console.log('[Persistence] Cache cleared - tracking disabled');
