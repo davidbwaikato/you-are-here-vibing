@@ -6,7 +6,7 @@ import {
 } from '@/utils/constants';
 
 // Logging control - set to false to disable segmentation logs
-const DEBUG_SEGMENTATION = true;
+const DEBUG_SEGMENTATION = false;
 
 interface UseSegmentationLoopProps {
   isInitialized: boolean;

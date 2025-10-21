@@ -2,6 +2,7 @@
 
 import { HumanResult, CachedSkeletonParts } from '@/types/detection';
 import { FACIAL_KEYPOINT_INDICES, BODY_CONNECTIONS, FINGER_CONNECTIONS } from './constants';
+import { isFistClenched, calculateHandBoundingBox } from './fistDetection';
 
 /**
  * Draw face detection as oval
@@ -112,7 +113,7 @@ const drawBody = (
 };
 
 /**
- * Draw hand poses
+ * Draw hand poses with fist detection and bounding boxes
  */
 const drawHands = (
   ctx: CanvasRenderingContext2D,
@@ -126,6 +127,10 @@ const drawHands = (
 
   handData.forEach((hand) => {
     if (hand.keypoints) {
+      // Check if this hand is a clenched fist
+      const isFist = isFistClenched(hand.keypoints);
+      
+      // Draw hand keypoints
       hand.keypoints.forEach((kp) => {
         const scaledX = kp[0] * scaleX;
         const scaledY = kp[1] * scaleY;
@@ -135,6 +140,7 @@ const drawHands = (
         ctx.fill();
       });
 
+      // Draw finger connections
       FINGER_CONNECTIONS.forEach(finger => {
         for (let i = 0; i < finger.length - 1; i++) {
           const kp1 = hand.keypoints![finger[i]];
@@ -147,6 +153,46 @@ const drawHands = (
           }
         }
       });
+
+      // Draw bounding box if fist is detected
+      if (isFist) {
+        const bbox = calculateHandBoundingBox(hand.keypoints, 15);
+        
+        if (bbox) {
+          const [minX, minY, maxX, maxY] = bbox;
+          const scaledMinX = minX * scaleX;
+          const scaledMinY = minY * scaleY;
+          const scaledMaxX = maxX * scaleX;
+          const scaledMaxY = maxY * scaleY;
+          
+          // Draw rectangular box around fist
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)'; // Red color for fist detection
+          ctx.lineWidth = 4;
+          ctx.setLineDash([10, 5]); // Dashed line for visual distinction
+          
+          ctx.beginPath();
+          ctx.rect(
+            scaledMinX,
+            scaledMinY,
+            scaledMaxX - scaledMinX,
+            scaledMaxY - scaledMinY
+          );
+          ctx.stroke();
+          
+          // Reset line dash for other drawings
+          ctx.setLineDash([]);
+          
+          // Draw "FIST" label above the box
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+          ctx.font = 'bold 16px Arial';
+          ctx.fillText('FIST', scaledMinX, scaledMinY - 10);
+          
+          // Reset styles
+          ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)';
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.9)';
+          ctx.lineWidth = 3;
+        }
+      }
     }
   });
 };
