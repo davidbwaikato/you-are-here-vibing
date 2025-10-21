@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
+import { setPosition, setPov } from '@/store/streetViewSlice';
 import { useRoutePolyline } from '@/hooks/useRoutePolyline';
 import { interpolatePolyline, getVisibleMarkers } from '@/utils/geoUtils';
 import { polylineTo3D } from '@/utils/coordinateConversion';
@@ -16,6 +17,7 @@ interface ThreeJsCanvasProps {
 }
 
 export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
+  const dispatch = useDispatch();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -30,6 +32,12 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
   const dragStartYRef = useRef<number>(0);
   const accumulatedDragRef = useRef<number>(0);
   const visibleMarkersCountRef = useRef<number>(0);
+
+  // Store visible markers for teleport feature
+  const visibleMarkersRef = useRef<Array<{ lat: number; lng: number; heading: number }>>([]);
+
+  // Track previous position to detect teleports
+  const previousPositionRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Get Street View position, POV, zoom, and loaded state from Redux store
   const { position, pov, zoom, isLoaded: isStreetViewLoaded } = useSelector((state: RootState) => state.streetView);
@@ -150,20 +158,10 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
         return;
       }
 
-      console.log('[ThreeJS] 🖱️ MouseMove during drag:', {
-        clientY: event.clientY,
-        buttons: event.buttons,
-      });
-
       // Calculate vertical movement since drag start
       const deltaY = dragStartYRef.current - event.clientY; // Positive = drag up, Negative = drag down
       accumulatedDragRef.current += deltaY;
       dragStartYRef.current = event.clientY;
-
-      console.log('[ThreeJS] 🖱️ Drag calculation:', {
-        deltaY: deltaY.toFixed(1) + 'px',
-        accumulated: accumulatedDragRef.current.toFixed(1) + 'px',
-      });
 
       // Check if we've accumulated enough movement (50 pixels = 1 marker step)
       const DRAG_THRESHOLD = 50;
@@ -222,6 +220,113 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     };
   }, []); // No dependencies - use refs for current values
 
+  // Setup Enter key teleport feature
+  useEffect(() => {
+    console.log('[ThreeJS] ⌨️ Setting up Enter key teleport...');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      console.log('[ThreeJS] ⌨️ Key pressed:', event.key);
+
+      // Only handle Enter key
+      if (event.key !== 'Enter') {
+        return;
+      }
+
+      console.log('[ThreeJS] ⌨️ Enter key detected! Starting teleport...');
+
+      // Check if we have visible markers
+      if (visibleMarkersRef.current.length === 0) {
+        console.log('[ThreeJS] ⚠️ Cannot teleport - no visible markers available');
+        return;
+      }
+
+      // Check if we have a valid selected marker
+      if (selectedMarkerIndexRef.current < 0 || 
+          selectedMarkerIndexRef.current >= visibleMarkersRef.current.length) {
+        console.log('[ThreeJS] ⚠️ Cannot teleport - invalid marker index:', {
+          selectedIndex: selectedMarkerIndexRef.current,
+          availableMarkers: visibleMarkersRef.current.length,
+        });
+        return;
+      }
+
+      const selectedMarker = visibleMarkersRef.current[selectedMarkerIndexRef.current];
+
+      console.log('[ThreeJS] 🚀 TELEPORTING to marker:', {
+        index: selectedMarkerIndexRef.current,
+        totalMarkers: visibleMarkersRef.current.length,
+        position: { lat: selectedMarker.lat, lng: selectedMarker.lng },
+        heading: selectedMarker.heading,
+        markerData: selectedMarker,
+      });
+
+      // Update Redux state to trigger Street View panorama change
+      console.log('[ThreeJS] 📤 Dispatching setPosition with:', { 
+        lat: selectedMarker.lat, 
+        lng: selectedMarker.lng 
+      });
+      
+      dispatch(setPosition({ 
+        lat: selectedMarker.lat, 
+        lng: selectedMarker.lng 
+      }));
+
+      console.log('[ThreeJS] 📤 Dispatching setPov with:', { 
+        heading: selectedMarker.heading, 
+        pitch: 0 
+      });
+      
+      dispatch(setPov({ 
+        heading: selectedMarker.heading, 
+        pitch: 0 // Reset pitch to horizon
+      }));
+
+      // Prevent default Enter key behavior
+      event.preventDefault();
+    };
+
+    // Add event listener to document
+    document.addEventListener('keydown', handleKeyDown);
+
+    console.log('[ThreeJS] ✅ Enter key listener attached to document');
+
+    // Cleanup
+    return () => {
+      console.log('[ThreeJS] 🧹 Removing Enter key listener');
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [dispatch]); // Only dispatch as dependency
+
+  // Detect position changes and reset selected marker to closest
+  useEffect(() => {
+    // Skip if this is the first position (initialization)
+    if (!previousPositionRef.current) {
+      console.log('[ThreeJS] 📍 First position recorded:', position);
+      previousPositionRef.current = position;
+      return;
+    }
+
+    // Check if position actually changed (teleport occurred)
+    const positionChanged = 
+      previousPositionRef.current.lat !== position.lat ||
+      previousPositionRef.current.lng !== position.lng;
+
+    if (positionChanged) {
+      console.log('[ThreeJS] 🔄 POSITION CHANGED - Resetting selected marker to closest:', {
+        previousPosition: previousPositionRef.current,
+        newPosition: position,
+        previousSelectedIndex: selectedMarkerIndex,
+      });
+
+      // Reset selected marker to closest (index 0)
+      setSelectedMarkerIndex(0);
+      console.log('[ThreeJS] ✅ Selected marker reset to index 0 (closest)');
+
+      // Update previous position
+      previousPositionRef.current = position;
+    }
+  }, [position]); // Only depend on position changes
+
   // Create/update 3D route arrows when Street View position changes OR selected marker changes
   useEffect(() => {
     if (!sceneRef.current || !isStreetViewLoaded || !hasRoute) {
@@ -246,15 +351,39 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     // Update visible markers count for drag navigation
     visibleMarkersCountRef.current = visibilityResult.visibleCount;
 
-    // Initialize selected marker to closest marker on first load
-    if (visibilityResult.closestMarkerIndex >= 0 && selectedMarkerIndex === 0) {
-      setSelectedMarkerIndex(visibilityResult.closestMarkerIndex);
-    }
-
     // Extract LatLng coordinates from visible markers
     const visiblePoints = visibilityResult.visibleMarkers.map(marker => 
       interpolatedRoute.points[marker.originalRouteIndex]
     );
+
+    // Store visible markers with heading information for teleport feature
+    const markersWithHeading: Array<{ lat: number; lng: number; heading: number }> = [];
+    for (let i = 0; i < visiblePoints.length - 1; i++) {
+      const currentPoint = visiblePoints[i];
+      const nextPoint = visiblePoints[i + 1];
+      
+      // Calculate heading from current point to next point
+      const heading = google.maps.geometry.spherical.computeHeading(
+        new google.maps.LatLng(currentPoint.lat, currentPoint.lng),
+        new google.maps.LatLng(nextPoint.lat, nextPoint.lng)
+      );
+      
+      markersWithHeading.push({
+        lat: currentPoint.lat,
+        lng: currentPoint.lng,
+        heading: heading,
+      });
+    }
+    
+    visibleMarkersRef.current = markersWithHeading;
+    
+    console.log('[ThreeJS] 📊 Visible markers data:', {
+      count: markersWithHeading.length,
+      firstMarker: markersWithHeading[0],
+      selectedIndex: selectedMarkerIndex,
+      selectedMarker: markersWithHeading[selectedMarkerIndex],
+      closestMarkerDistance: visibilityResult.visibleMarkers[0]?.distance,
+    });
 
     if (visiblePoints.length < 2) {
       // Clean up existing arrows
@@ -376,6 +505,7 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
     console.log('[ThreeJS] ✅ Arrows created:', {
       totalCount: newArrows.length,
       selectedIndex: selectedMarkerIndex,
+      markersWithHeading: markersWithHeading.length,
     });
 
   }, [isStreetViewLoaded, hasRoute, position, pov.heading, routePolyline, selectedMarkerIndex]); // Added selectedMarkerIndex

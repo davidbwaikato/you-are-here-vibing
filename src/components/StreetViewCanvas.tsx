@@ -114,7 +114,7 @@ export const StreetViewCanvas = ({
       if (newPosition) {
         const lat = newPosition.lat();
         const lng = newPosition.lng();
-        console.log('[StreetView] Position changed:', { lat, lng });
+        console.log('[StreetView] 📍 Position changed event:', { lat, lng });
         dispatch(setPosition({ lat, lng }));
       }
     });
@@ -163,6 +163,40 @@ export const StreetViewCanvas = ({
       }
     };
   }, [isGoogleMapsLoaded]);
+
+  // Update panorama position when Redux position state changes
+  useEffect(() => {
+    console.log('[StreetView] 🔄 Position update effect triggered:', {
+      hasPanorama: !!panoramaRef.current,
+      isPanoramaReady,
+      newPosition: position,
+    });
+
+    if (!panoramaRef.current || !isPanoramaReady) {
+      console.log('[StreetView] ⏸️ Skipping position update - panorama not ready');
+      return;
+    }
+
+    const currentPosition = panoramaRef.current.getPosition();
+    const currentLat = currentPosition?.lat();
+    const currentLng = currentPosition?.lng();
+
+    console.log('[StreetView] 📊 Position comparison:', {
+      current: { lat: currentLat, lng: currentLng },
+      new: position,
+      isDifferent: currentLat !== position.lat || currentLng !== position.lng,
+    });
+
+    // Only update if position actually changed
+    if (currentLat === position.lat && currentLng === position.lng) {
+      console.log('[StreetView] ⏭️ Position unchanged, skipping update');
+      return;
+    }
+
+    console.log('[StreetView] 🚀 UPDATING PANORAMA POSITION to:', position);
+    panoramaRef.current.setPosition(position);
+    console.log('[StreetView] ✅ setPosition() called successfully');
+  }, [position, isPanoramaReady]);
 
   // Update panorama POV when Redux state changes (from motion tracking)
   useEffect(() => {

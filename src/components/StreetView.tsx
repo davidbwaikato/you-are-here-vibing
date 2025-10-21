@@ -84,21 +84,34 @@ export const StreetView = ({ isReady }: StreetViewProps) => {
     };
   }, [isReady, dispatch]);
 
-  // Update panorama when Redux state changes (from external sources)
+  // Update panorama when Redux state changes (from external sources like teleport)
   useEffect(() => {
-    if (!panoramaRef.current) return;
+    if (!panoramaRef.current) {
+      console.log('[StreetView] ⚠️ Cannot update position - panorama not initialized');
+      return;
+    }
 
     const currentPosition = panoramaRef.current.getPosition();
+    
+    // Check if position actually changed (avoid infinite loops)
     if (currentPosition && 
         (Math.abs(currentPosition.lat() - position.lat) > 0.00001 ||
          Math.abs(currentPosition.lng() - position.lng) > 0.00001)) {
-      console.log('[StreetView] 🔄 Updating position from Redux:', position);
+      console.log('[StreetView] 🚀 UPDATING PANORAMA POSITION:', {
+        from: { lat: currentPosition.lat(), lng: currentPosition.lng() },
+        to: position,
+      });
+      
+      // Update the panorama position
       panoramaRef.current.setPosition(position);
     }
   }, [position]);
 
   useEffect(() => {
-    if (!panoramaRef.current) return;
+    if (!panoramaRef.current) {
+      console.log('[StreetView] ⚠️ Cannot update POV - panorama not initialized');
+      return;
+    }
 
     const currentPov = panoramaRef.current.getPov();
     if (Math.abs(currentPov.heading - pov.heading) > 0.1 ||
