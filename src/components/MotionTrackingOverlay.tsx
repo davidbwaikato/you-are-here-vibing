@@ -102,9 +102,39 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
   const lastFistTopYRef = useRef<number | null>(null);
   const wasFistBeforeDisappearRef = useRef<boolean>(false);
   
-  // NEW: Sustained open-hand detection to prevent false positives
+  // ADAPTIVE: Sustained open-hand detection with frame-rate-based threshold
   const openHandFrameCountRef = useRef<number>(0);
-  const REQUIRED_OPEN_HAND_FRAMES = 5; // Require 5 consecutive frames of open hand
+  const TARGET_OPEN_HAND_TIME_MS = 3000; // Target 3 seconds for sustained detection
+  
+  // Calculate required frames based on current detection FPS
+  const calculateRequiredFrames = (fps: number): number => {
+    if (fps <= 0) return 5; // Fallback to 5 frames if fps not available
+    
+    // Calculate frames needed for TARGET_OPEN_HAND_TIME_MS at current fps
+    const requiredFrames = Math.ceil((fps * TARGET_OPEN_HAND_TIME_MS) / 1000);
+    
+    // Clamp between reasonable bounds (min 3 frames, max 30 frames)
+    const clampedFrames = Math.max(3, Math.min(30, requiredFrames));
+    
+    return clampedFrames;
+  };
+  
+  // Track the required frames threshold (recalculated when fps changes)
+  const requiredOpenHandFramesRef = useRef<number>(5);
+  
+  // Update required frames when detection fps changes
+  useEffect(() => {
+    if (detectionFps > 0) {
+      const newRequiredFrames = calculateRequiredFrames(detectionFps);
+      
+      if (newRequiredFrames !== requiredOpenHandFramesRef.current) {
+        const oldFrames = requiredOpenHandFramesRef.current;
+        requiredOpenHandFramesRef.current = newRequiredFrames;
+        
+        console.log(`[Fist Tracking] 📊 Adaptive threshold updated: ${oldFrames} → ${newRequiredFrames} frames (fps: ${detectionFps.toFixed(1)}, target: ${TARGET_OPEN_HAND_TIME_MS}ms)`);
+      }
+    }
+  }, [detectionFps]);
   
   // Constants for fist tracking
   const FIST_VERTICAL_THRESHOLD = 50; // Same as middle-mouse drag threshold
@@ -247,11 +277,15 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
             // Increment open-hand frame counter
             openHandFrameCountRef.current++;
             
-            console.log(`[Fist Tracking] ${trackedHandRef.current} hand detected as OPEN - frame count: ${openHandFrameCountRef.current}/${REQUIRED_OPEN_HAND_FRAMES}`);
+            // Get current required frames threshold
+            const requiredFrames = requiredOpenHandFramesRef.current;
+            
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand detected as OPEN - frame count: ${openHandFrameCountRef.current}/${requiredFrames} (fps: ${detectionFps.toFixed(1)})`);
             
             // Only trigger teleport after sustained open-hand detection
-            if (openHandFrameCountRef.current >= REQUIRED_OPEN_HAND_FRAMES) {
-              console.log(`[Fist Tracking] ✅ SUSTAINED OPEN HAND CONFIRMED (${openHandFrameCountRef.current} frames) - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
+            if (openHandFrameCountRef.current >= requiredFrames) {
+              const timeElapsed = (openHandFrameCountRef.current / detectionFps) * 1000;
+              console.log(`[Fist Tracking] ✅ SUSTAINED OPEN HAND CONFIRMED (${openHandFrameCountRef.current} frames, ${timeElapsed.toFixed(0)}ms) - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
               
               // Trigger teleport via callback
               if (onTeleportToMarker) {
@@ -268,7 +302,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
               openHandFrameCountRef.current = 0;
               dispatch(setFistTrackingActive(false));
             } else {
-              console.log(`[Fist Tracking] ⏳ Waiting for sustained open hand... (${openHandFrameCountRef.current}/${REQUIRED_OPEN_HAND_FRAMES} frames)`);
+              console.log(`[Fist Tracking] ⏳ Waiting for sustained open hand... (${openHandFrameCountRef.current}/${requiredFrames} frames)`);
             }
             return;
           }
@@ -301,7 +335,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [isInitialized, isCameraActive, isTrackingEnabled, webglContextLost, detectionResultRef, dispatch, onTeleportToMarker]);
+  }, [isInitialized, isCameraActive, isTrackingEnabled, webglContextLost, detectionResultRef, detectionFps, dispatch, onTeleportToMarker]);
 
   // WebGL context loss/restoration handlers
   useEffect(() => {
