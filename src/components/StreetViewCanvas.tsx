@@ -31,6 +31,9 @@ export const StreetViewCanvas = ({
   const hasInitializedRef = useRef(false);
   const shouldCleanupRef = useRef(false);
   
+  // Store teleport callback function
+  const teleportCallbackRef = useRef<((markerIndex: number) => void) | null>(null);
+  
   const { position, pov, zoom } = useSelector((state: RootState) => state.streetView);
 
   console.log('[StreetView] Component render - isGoogleMapsLoaded:', isGoogleMapsLoaded, 'isPanoramaReady:', isPanoramaReady);
@@ -227,6 +230,23 @@ export const StreetViewCanvas = ({
     panoramaRef.current.setPosition(sourceLocation);
   }, [sourceLocation, hasSourceError, isPanoramaReady]);
 
+  // Callback to receive teleport function from ThreeJsCanvas
+  const handleTeleportCallback = (teleportFn: (markerIndex: number) => void) => {
+    console.log('[StreetView] Received teleport callback from ThreeJsCanvas');
+    teleportCallbackRef.current = teleportFn;
+  };
+
+  // Callback to trigger teleport from MotionTrackingOverlay
+  const handleTeleportToMarker = (markerIndex: number) => {
+    console.log('[StreetView] Teleport request from MotionTrackingOverlay:', markerIndex);
+    if (teleportCallbackRef.current) {
+      console.log('[StreetView] Calling teleport function with index:', markerIndex);
+      teleportCallbackRef.current(markerIndex);
+    } else {
+      console.warn('[StreetView] Teleport callback not available yet!');
+    }
+  };
+
   console.log('[StreetView] Rendering panorama container and overlays');
 
   return (
@@ -243,8 +263,8 @@ export const StreetViewCanvas = ({
       />
       {isPanoramaReady && (
         <>
-          <ThreeJsCanvas isReady={isPanoramaReady} />
-          <MotionTrackingOverlay panoramaRef={panoramaRef} />
+          <ThreeJsCanvas isReady={isPanoramaReady} onTeleportToMarker={handleTeleportCallback} />
+          <MotionTrackingOverlay panoramaRef={panoramaRef} onTeleportToMarker={handleTeleportToMarker} />
           <LocationOverlay />
         </>
       )}

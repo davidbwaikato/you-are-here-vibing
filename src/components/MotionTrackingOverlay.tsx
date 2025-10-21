@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/store/store';
-import { setVideoOverlayEnabled } from '@/store/streetViewSlice';
+import { setVideoOverlayEnabled, setSelectedMarkerIndex, setFistTrackingActive } from '@/store/streetViewSlice';
 import { useHumanDetection } from '@/hooks/useHumanDetection';
 import { useCamera } from '@/hooks/useCamera';
 import { useCanvasSetup } from '@/hooks/useCanvasSetup';
@@ -12,16 +12,17 @@ import { TrackingControls } from './TrackingControls';
 
 interface MotionTrackingOverlayProps {
   panoramaRef: React.MutableRefObject<google.maps.StreetViewPanorama | null>;
+  onTeleportToMarker?: (markerIndex: number) => void;
 }
 
-export const MotionTrackingOverlay = ({ panoramaRef }: MotionTrackingOverlayProps) => {
+export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: MotionTrackingOverlayProps) => {
   const dispatch = useDispatch();
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const [isSkeletonVisible, setIsSkeletonVisible] = useState(false);
   const [shoulderAngle, setShoulderAngle] = useState<number | null>(null);
   const [webglContextLost, setWebglContextLost] = useState(false);
   
-  const { pov, isVideoOverlayEnabled } = useSelector((state: RootState) => state.streetView);
+  const { pov, isVideoOverlayEnabled, selectedMarkerIndex } = useSelector((state: RootState) => state.streetView);
   
   // Initialize camera with dynamic control
   const { 
@@ -96,6 +97,182 @@ export const MotionTrackingOverlay = ({ panoramaRef }: MotionTrackingOverlayProp
     cachedParts: prevSkeletonPartsRef,
   });
 
+  // Fist gesture tracking state
+  const trackedHandRef = useRef<'left' | 'right' | null>(null);
+  const lastFistTopYRef = useRef<number | null>(null);
+  const wasFistBeforeDisappearRef = useRef<boolean>(false);
+  
+  // Constants for fist tracking
+  const FIST_VERTICAL_THRESHOLD = 50; // Same as middle-mouse drag threshold
+
+  // Sync Redux selectedMarkerIndex with local ref when changed externally (e.g., by mouse)
+  const selectedMarkerIndexRef = useRef<number>(selectedMarkerIndex);
+  useEffect(() => {
+    selectedMarkerIndexRef.current = selectedMarkerIndex;
+    console.log('[Fist Tracking] Redux selectedMarkerIndex synced to ref:', selectedMarkerIndex);
+  }, [selectedMarkerIndex]);
+
+  // Fist gesture tracking effect
+  useEffect(() => {
+    if (!isInitialized || !isCameraActive || !isTrackingEnabled || webglContextLost) {
+      // Reset tracking state when conditions not met
+      if (trackedHandRef.current !== null) {
+        console.log('[Fist Tracking] Conditions not met - resetting tracking state');
+        trackedHandRef.current = null;
+        lastFistTopYRef.current = null;
+        wasFistBeforeDisappearRef.current = false;
+        dispatch(setFistTrackingActive(false));
+      }
+      return;
+    }
+
+    // Run fist tracking logic on every render
+    const checkFistGesture = () => {
+      const result = detectionResultRef.current;
+      if (!result) return;
+
+      const leftFist = result.leftHand.detected && result.leftHand.isFist;
+      const rightFist = result.rightHand.detected && result.rightHand.isFist;
+
+      // Case 1: Both fists clenched - no tracking (reserved for future feature)
+      if (leftFist && rightFist) {
+        if (trackedHandRef.current !== null) {
+          console.log('[Fist Tracking] Both fists detected - pausing tracking');
+          trackedHandRef.current = null;
+          lastFistTopYRef.current = null;
+          wasFistBeforeDisappearRef.current = false;
+          dispatch(setFistTrackingActive(false));
+        }
+        return;
+      }
+
+      // Case 2: Single fist detected
+      if (leftFist || rightFist) {
+        const currentHand = leftFist ? 'left' : 'right';
+        const handData = leftFist ? result.leftHand : result.rightHand;
+
+        // Start tracking new hand
+        if (trackedHandRef.current === null) {
+          if (handData.boundingBox) {
+            const [, minY] = handData.boundingBox;
+            trackedHandRef.current = currentHand;
+            lastFistTopYRef.current = minY;
+            wasFistBeforeDisappearRef.current = true;
+            dispatch(setFistTrackingActive(true));
+            console.log(`[Fist Tracking] Started tracking ${currentHand} hand at Y=${minY.toFixed(1)}`);
+          }
+          return;
+        }
+
+        // Continue tracking same hand
+        if (trackedHandRef.current === currentHand) {
+          if (handData.boundingBox && lastFistTopYRef.current !== null) {
+            const [, currentMinY] = handData.boundingBox;
+            const deltaY = currentMinY - lastFistTopYRef.current;
+
+            // Check if movement exceeds threshold
+            if (Math.abs(deltaY) >= FIST_VERTICAL_THRESHOLD) {
+              // Vertical up = move forward in route (negative deltaY)
+              // Vertical down = move backward in route (positive deltaY)
+              const direction = deltaY < 0 ? 'forward' : 'backward';
+              const steps = Math.floor(Math.abs(deltaY) / FIST_VERTICAL_THRESHOLD);
+
+              console.log(`[Fist Tracking] ${currentHand} hand moved ${direction} by ${Math.abs(deltaY).toFixed(1)}px (${steps} steps)`);
+
+              // Calculate new marker index
+              let newIndex = selectedMarkerIndexRef.current;
+              if (direction === 'forward') {
+                newIndex = selectedMarkerIndexRef.current + steps;
+              } else {
+                newIndex = Math.max(selectedMarkerIndexRef.current - steps, 0);
+              }
+
+              // Update Redux state (will be clamped in ThreeJsCanvas based on actual marker count)
+              dispatch(setSelectedMarkerIndex(newIndex));
+              console.log(`[Fist Tracking] Dispatched setSelectedMarkerIndex: ${newIndex}`);
+
+              // Update last position
+              lastFistTopYRef.current = currentMinY;
+            }
+
+            wasFistBeforeDisappearRef.current = true;
+          }
+          return;
+        }
+
+        // Different hand detected - switch tracking
+        if (handData.boundingBox) {
+          const [, minY] = handData.boundingBox;
+          console.log(`[Fist Tracking] Switched from ${trackedHandRef.current} to ${currentHand} hand at Y=${minY.toFixed(1)}`);
+          trackedHandRef.current = currentHand;
+          lastFistTopYRef.current = minY;
+          wasFistBeforeDisappearRef.current = true;
+        }
+        return;
+      }
+
+      // Case 3: No fists detected
+      if (!leftFist && !rightFist) {
+        // Check if we were tracking a hand before
+        if (trackedHandRef.current !== null) {
+          const trackedHandData = trackedHandRef.current === 'left' ? result.leftHand : result.rightHand;
+
+          // Sub-case 3a: Tracked hand disappeared but was fist before
+          if (!trackedHandData.detected && wasFistBeforeDisappearRef.current) {
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand disappeared - maintaining tracking state`);
+            // Keep tracking state, wait for hand to reappear
+            return;
+          }
+
+          // Sub-case 3b: Tracked hand reappeared and is now open
+          if (trackedHandData.detected && !trackedHandData.isFist && wasFistBeforeDisappearRef.current) {
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand opened - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
+            
+            // Trigger teleport via callback
+            if (onTeleportToMarker) {
+              console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
+              onTeleportToMarker(selectedMarkerIndexRef.current);
+            } else {
+              console.warn('[Fist Tracking] onTeleportToMarker callback not provided!');
+            }
+            
+            // Reset tracking state
+            trackedHandRef.current = null;
+            lastFistTopYRef.current = null;
+            wasFistBeforeDisappearRef.current = false;
+            dispatch(setFistTrackingActive(false));
+            return;
+          }
+
+          // Sub-case 3c: Tracked hand reappeared but was never a fist (shouldn't happen, but handle gracefully)
+          if (trackedHandData.detected && !trackedHandData.isFist && !wasFistBeforeDisappearRef.current) {
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand detected but not a fist - resetting tracking`);
+            trackedHandRef.current = null;
+            lastFistTopYRef.current = null;
+            wasFistBeforeDisappearRef.current = false;
+            dispatch(setFistTrackingActive(false));
+            return;
+          }
+        }
+      }
+    };
+
+    // Run gesture check on animation frame for smooth tracking
+    let animationFrameId: number;
+    const gestureLoop = () => {
+      checkFistGesture();
+      animationFrameId = requestAnimationFrame(gestureLoop);
+    };
+
+    gestureLoop();
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [isInitialized, isCameraActive, isTrackingEnabled, webglContextLost, detectionResultRef, dispatch, onTeleportToMarker]);
+
   // WebGL context loss/restoration handlers
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -117,6 +294,12 @@ export const MotionTrackingOverlay = ({ panoramaRef }: MotionTrackingOverlayProp
       clearDetectionCache();
       clearSegmentationCache();
       setShoulderAngle(null);
+      
+      // Clear fist tracking state
+      trackedHandRef.current = null;
+      lastFistTopYRef.current = null;
+      wasFistBeforeDisappearRef.current = false;
+      dispatch(setFistTrackingActive(false));
       
       // Clear canvases
       const ctx = canvas.getContext('2d');
@@ -155,7 +338,7 @@ export const MotionTrackingOverlay = ({ panoramaRef }: MotionTrackingOverlayProp
       segCanvas.removeEventListener('webglcontextlost', handleContextLost);
       segCanvas.removeEventListener('webglcontextrestored', handleContextRestored);
     };
-  }, [canvasRef.current, segmentationCanvasRef.current, isTrackingEnabled, clearDetectionCache, clearSegmentationCache, reinitialize]);
+  }, [canvasRef.current, segmentationCanvasRef.current, isTrackingEnabled, clearDetectionCache, clearSegmentationCache, reinitialize, dispatch]);
 
   const toggleTracking = () => {
     if (webglContextLost) {
@@ -176,6 +359,13 @@ export const MotionTrackingOverlay = ({ panoramaRef }: MotionTrackingOverlayProp
         clearDetectionCache();
         clearSegmentationCache();
         setShoulderAngle(null);
+        
+        // Clear fist tracking state
+        trackedHandRef.current = null;
+        lastFistTopYRef.current = null;
+        wasFistBeforeDisappearRef.current = false;
+        dispatch(setFistTrackingActive(false));
+        
         console.log('[Persistence] Cache cleared - tracking disabled');
       }
       

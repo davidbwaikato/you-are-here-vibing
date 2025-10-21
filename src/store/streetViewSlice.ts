@@ -24,6 +24,8 @@ interface StreetViewState {
   sourceAddress: string | null;
   destinationAddress: string | null;
   routePolyline: LatLng[];
+  selectedMarkerIndex: number;
+  isFistTrackingActive: boolean;
 }
 
 const initialState: StreetViewState = {
@@ -42,6 +44,8 @@ const initialState: StreetViewState = {
   sourceAddress: null,
   destinationAddress: null,
   routePolyline: [],
+  selectedMarkerIndex: 0,
+  isFistTrackingActive: false,
 };
 
 const streetViewSlice = createSlice({
@@ -99,15 +103,29 @@ const streetViewSlice = createSlice({
         totalPoints: state.routePolyline.length,
       });
     },
+    setSelectedMarkerIndex: (state, action: PayloadAction<number>) => {
+      console.log('[Redux Reducer] setSelectedMarkerIndex called with:', action.payload);
+      state.selectedMarkerIndex = action.payload;
+      console.log('[Redux Reducer] New selectedMarkerIndex state:', state.selectedMarkerIndex);
+    },
+    setFistTrackingActive: (state, action: PayloadAction<boolean>) => {
+      console.log('[Redux Reducer] setFistTrackingActive called with:', action.payload);
+      state.isFistTrackingActive = action.payload;
+      console.log('[Redux Reducer] New isFistTrackingActive state:', state.isFistTrackingActive);
+    },
     clearRoute: (state) => {
       console.log('[Redux Reducer] clearRoute called');
       state.routePolyline = [];
       state.destinationLocation = null;
       state.destinationAddress = null;
+      state.selectedMarkerIndex = 0;
+      state.isFistTrackingActive = false;
       console.log('[Redux Reducer] Route cleared:', {
         routePolyline: state.routePolyline.length,
         destinationLocation: state.destinationLocation,
         destinationAddress: state.destinationAddress,
+        selectedMarkerIndex: state.selectedMarkerIndex,
+        isFistTrackingActive: state.isFistTrackingActive,
       });
     },
   },
@@ -123,6 +141,8 @@ export const {
   setSourceAddress,
   setDestinationAddress,
   setRoutePolyline,
+  setSelectedMarkerIndex,
+  setFistTrackingActive,
   clearRoute,
 } = streetViewSlice.actions;
 export default streetViewSlice.reducer;
