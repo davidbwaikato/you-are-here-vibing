@@ -455,9 +455,29 @@ export const ThreeJsCanvas = ({ isReady }: ThreeJsCanvasProps) => {
       routeArrowsRef.current = [];
     }
 
-    // Create arrow geometry components
-    const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 8);
-    const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8);
+    // Create arrow geometry components with increased segments for smoother appearance
+    // ConeGeometry(radius, height, radialSegments, heightSegments)
+    // CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments)
+    const coneGeometry = new THREE.ConeGeometry(
+      0.3,  // radius
+      0.6,  // height
+      32,   // radialSegments (increased from 8 to 32 for smoother circular profile)
+      1     // heightSegments
+    );
+    
+    const cylinderGeometry = new THREE.CylinderGeometry(
+      0.15, // radiusTop
+      0.15, // radiusBottom
+      0.8,  // height
+      32,   // radialSegments (increased from 8 to 32 for smoother circular profile)
+      1     // heightSegments
+    );
+    
+    console.log('[ThreeJS] 🎨 Arrow geometry created with high-quality segments:', {
+      coneSegments: 32,
+      cylinderSegments: 32,
+      improvement: '4x smoother than default (8 segments)',
+    });
     
     // Create materials for arrows
     const defaultArrowMaterial = new THREE.MeshStandardMaterial({
