@@ -2,7 +2,6 @@
 
 import { HumanResult, CachedSkeletonParts } from '@/types/detection';
 import { FACIAL_KEYPOINT_INDICES, BODY_CONNECTIONS, FINGER_CONNECTIONS } from './constants';
-import { isFistClenched, calculateHandBoundingBox } from './fistDetection';
 
 /**
  * Draw face detection as oval
@@ -113,11 +112,12 @@ const drawBody = (
 };
 
 /**
- * Draw hand poses with fist detection and bounding boxes
+ * Draw hand poses with pre-computed fist detection and bounding boxes
  */
 const drawHands = (
   ctx: CanvasRenderingContext2D,
   handData: Array<{ keypoints?: Array<[number, number]> }>,
+  result: HumanResult,
   scaleX: number,
   scaleY: number
 ) => {
@@ -125,10 +125,10 @@ const drawHands = (
   ctx.fillStyle = 'rgba(34, 197, 94, 0.9)';
   ctx.lineWidth = 3;
 
-  handData.forEach((hand) => {
+  handData.forEach((hand, index) => {
     if (hand.keypoints) {
-      // Check if this hand is a clenched fist
-      const isFist = isFistClenched(hand.keypoints);
+      // Get pre-computed hand detection data
+      const handDetectionData = index === 0 ? result.leftHand : result.rightHand;
       
       // Draw hand keypoints
       hand.keypoints.forEach((kp) => {
@@ -154,44 +154,41 @@ const drawHands = (
         }
       });
 
-      // Draw bounding box if fist is detected
-      if (isFist) {
-        const bbox = calculateHandBoundingBox(hand.keypoints, 15);
+      // Draw bounding box if fist is detected (using pre-computed data)
+      if (handDetectionData.detected && handDetectionData.isFist && handDetectionData.boundingBox) {
+        const [minX, minY, maxX, maxY] = handDetectionData.boundingBox;
+        const scaledMinX = minX * scaleX;
+        const scaledMinY = minY * scaleY;
+        const scaledMaxX = maxX * scaleX;
+        const scaledMaxY = maxY * scaleY;
         
-        if (bbox) {
-          const [minX, minY, maxX, maxY] = bbox;
-          const scaledMinX = minX * scaleX;
-          const scaledMinY = minY * scaleY;
-          const scaledMaxX = maxX * scaleX;
-          const scaledMaxY = maxY * scaleY;
-          
-          // Draw rectangular box around fist
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)'; // Red color for fist detection
-          ctx.lineWidth = 4;
-          ctx.setLineDash([10, 5]); // Dashed line for visual distinction
-          
-          ctx.beginPath();
-          ctx.rect(
-            scaledMinX,
-            scaledMinY,
-            scaledMaxX - scaledMinX,
-            scaledMaxY - scaledMinY
-          );
-          ctx.stroke();
-          
-          // Reset line dash for other drawings
-          ctx.setLineDash([]);
-          
-          // Draw "FIST" label above the box
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
-          ctx.font = 'bold 16px Arial';
-          ctx.fillText('FIST', scaledMinX, scaledMinY - 10);
-          
-          // Reset styles
-          ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)';
-          ctx.fillStyle = 'rgba(34, 197, 94, 0.9)';
-          ctx.lineWidth = 3;
-        }
+        // Draw rectangular box around fist
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)'; // Red color for fist detection
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 5]); // Dashed line for visual distinction
+        
+        ctx.beginPath();
+        ctx.rect(
+          scaledMinX,
+          scaledMinY,
+          scaledMaxX - scaledMinX,
+          scaledMaxY - scaledMinY
+        );
+        ctx.stroke();
+        
+        // Reset line dash for other drawings
+        ctx.setLineDash([]);
+        
+        // Draw "FIST" label above the box
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+        ctx.font = 'bold 16px Arial';
+        const label = index === 0 ? 'LEFT FIST' : 'RIGHT FIST';
+        ctx.fillText(label, scaledMinX, scaledMinY - 10);
+        
+        // Reset styles
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)';
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.9)';
+        ctx.lineWidth = 3;
       }
     }
   });
@@ -228,5 +225,5 @@ export const drawSkeleton = (
   // Draw each part
   if (faceData) drawFace(ctx, faceData, scaleX, scaleY);
   if (bodyData) drawBody(ctx, bodyData, scaleX, scaleY);
-  if (handData) drawHands(ctx, handData, scaleX, scaleY);
+  if (handData) drawHands(ctx, handData, result, scaleX, scaleY);
 };

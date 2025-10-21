@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { setPov } from '@/store/streetViewSlice';
-import { HumanResult, CachedSkeletonParts } from '@/types/detection';
+import { HumanResult, CachedSkeletonParts, HandDetectionData } from '@/types/detection';
 import { deepCopyFace, deepCopyBody, deepCopyHand } from '@/utils/cacheHelpers';
 import { calculateShoulderAngle, normalizeHeading, calculateWrappedDelta } from '@/utils/shoulderTracking';
+import { isFistClenched, calculateHandBoundingBox } from '@/utils/fistDetection';
 import {
   DETECTION_INTERVAL_MS,
   LOG_INTERVAL_FRAMES,
@@ -100,7 +101,7 @@ export const useDetectionLoop = ({
       trackingEnabledAtStartRef.current = isTrackingEnabled;
       
       try {
-        const result = await detect();
+        const rawResult = await detect();
 
         // CRITICAL: Check if tracking is still enabled after async detect() completes
         if (!trackingEnabledAtStartRef.current) {
@@ -108,6 +109,48 @@ export const useDetectionLoop = ({
           isDetectingRef.current = false;
           return;
         }
+
+        // ENHANCED: Process hand detection data immediately after detect()
+        const leftHandData: HandDetectionData = {
+          detected: false,
+          boundingBox: null,
+          isFist: false,
+        };
+        
+        const rightHandData: HandDetectionData = {
+          detected: false,
+          boundingBox: null,
+          isFist: false,
+        };
+
+        // Process detected hands
+        if (rawResult?.hand && rawResult.hand.length > 0) {
+          // MediaPipe Hands typically returns hands in order: [left, right] or [right, left]
+          // We'll process up to 2 hands and assume first is left, second is right
+          // (In production, you'd use hand.label or hand.handedness to determine left/right)
+          
+          rawResult.hand.forEach((hand: any, index: number) => {
+            if (hand.keypoints && hand.keypoints.length >= 21) {
+              const handData = index === 0 ? leftHandData : rightHandData;
+              
+              // Set detected flag
+              handData.detected = true;
+              
+              // Calculate bounding box
+              handData.boundingBox = calculateHandBoundingBox(hand.keypoints, 15);
+              
+              // Check if fist is clenched
+              handData.isFist = isFistClenched(hand.keypoints);
+            }
+          });
+        }
+
+        // Create enhanced result with hand detection data
+        const result: HumanResult = {
+          ...rawResult,
+          leftHand: leftHandData,
+          rightHand: rightHandData,
+        };
 
         // Calculate FPS
         const currentTime = performance.now();
@@ -134,7 +177,7 @@ export const useDetectionLoop = ({
           prevSkeletonPartsRef.current.hand = deepCopyHand(result.hand);
         }
         
-        detectionResultRef.current = result as HumanResult;
+        detectionResultRef.current = result;
         
         // Calculate shoulder swivel and update Street View heading
         if (result?.body?.[0]?.keypoints) {
@@ -175,6 +218,14 @@ export const useDetectionLoop = ({
         
         if (detectionCountRef.current % LOG_INTERVAL_FRAMES === 0) {
           console.log('[Detection] Frame:', detectionCountRef.current, 'FPS:', fps.toFixed(1));
+          
+          // Log fist detection status
+          if (leftHandData.detected || rightHandData.detected) {
+            console.log('[Fist Detection]', {
+              left: leftHandData.detected ? (leftHandData.isFist ? '👊 FIST' : '✋ OPEN') : '❌',
+              right: rightHandData.detected ? (rightHandData.isFist ? '👊 FIST' : '✋ OPEN') : '❌',
+            });
+          }
         }
       } catch (error) {
         console.error('[Detection] Error:', error);

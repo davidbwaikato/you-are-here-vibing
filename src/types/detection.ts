@@ -20,10 +20,20 @@ export interface HandDetection {
   keypoints?: Array<[number, number]>;
 }
 
+// Enhanced hand detection data with fist detection and bounding box
+export interface HandDetectionData {
+  detected: boolean;                              // True if hand was detected
+  boundingBox: [number, number, number, number] | null;  // [minX, minY, maxX, maxY] if hand present
+  isFist: boolean;                                // True if hand present and clenched
+}
+
 export interface HumanResult {
   face?: FaceDetection[];
   body?: BodyDetection[];
   hand?: HandDetection[];
+  // Enhanced hand detection data
+  leftHand: HandDetectionData;
+  rightHand: HandDetectionData;
 }
 
 export interface CachedSkeletonParts {

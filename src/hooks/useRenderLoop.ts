@@ -114,6 +114,74 @@ export const useRenderLoop = ({
         
         offscreenCtx.globalAlpha = 1.0;
         offscreenCtx.restore();
+
+        // ✨ NEW: Draw fist bounding boxes on offscreenCtx when segmentation is present
+        const result = detectionResult.current;
+        if (result) {
+          // Check left hand for fist
+          if (result.leftHand.detected && result.leftHand.isFist && result.leftHand.boundingBox) {
+            const [minX, minY, maxX, maxY] = result.leftHand.boundingBox;
+            
+            // Scale coordinates to canvas size
+            const scaledMinX = minX * scaleX;
+            const scaledMinY = minY * scaleY;
+            const scaledMaxX = maxX * scaleX;
+            const scaledMaxY = maxY * scaleY;
+            
+            // Apply mirror transformation for drawing
+            offscreenCtx.save();
+            offscreenCtx.scale(-1, 1);
+            offscreenCtx.translate(-offscreenCanvas.width, 0);
+            
+            // Draw solid red bounding box
+            offscreenCtx.strokeStyle = 'rgba(239, 68, 68, 1.0)'; // Solid red
+            offscreenCtx.lineWidth = 3;
+            offscreenCtx.setLineDash([]); // Solid line (no dashes)
+            
+            offscreenCtx.beginPath();
+            offscreenCtx.rect(
+              scaledMinX,
+              scaledMinY,
+              scaledMaxX - scaledMinX,
+              scaledMaxY - scaledMinY
+            );
+            offscreenCtx.stroke();
+            
+            offscreenCtx.restore();
+          }
+
+          // Check right hand for fist
+          if (result.rightHand.detected && result.rightHand.isFist && result.rightHand.boundingBox) {
+            const [minX, minY, maxX, maxY] = result.rightHand.boundingBox;
+            
+            // Scale coordinates to canvas size
+            const scaledMinX = minX * scaleX;
+            const scaledMinY = minY * scaleY;
+            const scaledMaxX = maxX * scaleX;
+            const scaledMaxY = maxY * scaleY;
+            
+            // Apply mirror transformation for drawing
+            offscreenCtx.save();
+            offscreenCtx.scale(-1, 1);
+            offscreenCtx.translate(-offscreenCanvas.width, 0);
+            
+            // Draw solid red bounding box
+            offscreenCtx.strokeStyle = 'rgba(239, 68, 68, 1.0)'; // Solid red
+            offscreenCtx.lineWidth = 3;
+            offscreenCtx.setLineDash([]); // Solid line (no dashes)
+            
+            offscreenCtx.beginPath();
+            offscreenCtx.rect(
+              scaledMinX,
+              scaledMinY,
+              scaledMaxX - scaledMinX,
+              scaledMaxY - scaledMinY
+            );
+            offscreenCtx.stroke();
+            
+            offscreenCtx.restore();
+          }
+        }
       }
 
       // Draw skeleton overlay
