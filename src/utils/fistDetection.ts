@@ -1,4 +1,9 @@
-// Fist detection utilities
+// Hand gesture detection utilities
+
+/**
+ * Gesture types that can be detected
+ */
+export type HandGesture = 'fist' | 'open' | 'pointing' | 'relaxed';
 
 /**
  * Detect if a hand is making a clenched fist gesture
@@ -17,7 +22,6 @@ export const isFistClenched = (keypoints: Array<[number, number]>): boolean => {
   // 13-16: Ring (13=MCP, 14=PIP, 15=DIP, 16=Tip)
   // 17-20: Pinky (17=MCP, 18=PIP, 19=DIP, 20=Tip)
 
-  const wrist = keypoints[0];
   const palmBase = keypoints[0]; // Use wrist as palm reference
 
   // Check each finger (index, middle, ring, pinky) - skip thumb as it curls differently
@@ -59,6 +63,259 @@ export const isFistClenched = (keypoints: Array<[number, number]>): boolean => {
   // (allows for slight variations in hand pose)
   return curledFingers >= 3;
 };
+
+/**
+ * Detect if a hand is fully open (all fingers extended)
+ * Based on finger extension analysis using hand landmarks
+ */
+export const isHandOpen = (keypoints: Array<[number, number]>): boolean => {
+  if (!keypoints || keypoints.length < 21) {
+    return false;
+  }
+
+  const palmBase = keypoints[0]; // Use wrist as palm reference
+
+  // Check all fingers including thumb
+  const fingers = [
+    { mcp: 1, tip: 4, name: 'thumb' },    // Thumb (use CMC as base)
+    { mcp: 5, tip: 8, name: 'index' },    // Index finger
+    { mcp: 9, tip: 12, name: 'middle' },  // Middle finger
+    { mcp: 13, tip: 16, name: 'ring' },   // Ring finger
+    { mcp: 17, tip: 20, name: 'pinky' },  // Pinky finger
+  ];
+
+  let extendedFingers = 0;
+
+  for (const finger of fingers) {
+    const mcp = keypoints[finger.mcp]; // Base of finger
+    const tip = keypoints[finger.tip]; // Fingertip
+
+    // Calculate distance from fingertip to palm base
+    const tipToPalmDist = Math.sqrt(
+      Math.pow(tip[0] - palmBase[0], 2) + Math.pow(tip[1] - palmBase[1], 2)
+    );
+
+    // Calculate distance from base to palm base
+    const mcpToPalmDist = Math.sqrt(
+      Math.pow(mcp[0] - palmBase[0], 2) + Math.pow(mcp[1] - palmBase[1], 2)
+    );
+
+    // If fingertip is farther from palm than base, finger is extended
+    // Use a ratio threshold to account for different hand sizes
+    const extensionRatio = tipToPalmDist / mcpToPalmDist;
+    
+    // Threshold: fingertip should be at least 1.5x the distance of the base
+    // (stricter than fist detection to ensure clear extension)
+    if (extensionRatio >= 1.5) {
+      extendedFingers++;
+    }
+  }
+
+  // Consider it open if at least 4 out of 5 fingers are extended
+  // (allows for slight variations in hand pose)
+  return extendedFingers >= 4;
+};
+
+/**
+ * Detect if a hand is pointing (index finger extended, other fingers curled)
+ * Based on selective finger extension analysis using hand landmarks
+ */
+export const isHandPointing = (keypoints: Array<[number, number]>): boolean => {
+  if (!keypoints || keypoints.length < 21) {
+    return false;
+  }
+
+  const palmBase = keypoints[0]; // Use wrist as palm reference
+
+  // Check index finger extension
+  const indexMcp = keypoints[5];
+  const indexTip = keypoints[8];
+  
+  const indexTipToPalmDist = Math.sqrt(
+    Math.pow(indexTip[0] - palmBase[0], 2) + Math.pow(indexTip[1] - palmBase[1], 2)
+  );
+  
+  const indexMcpToPalmDist = Math.sqrt(
+    Math.pow(indexMcp[0] - palmBase[0], 2) + Math.pow(indexMcp[1] - palmBase[1], 2)
+  );
+  
+  const indexExtensionRatio = indexTipToPalmDist / indexMcpToPalmDist;
+  
+  // Index finger must be extended (same threshold as open hand)
+  const isIndexExtended = indexExtensionRatio >= 1.5;
+  
+  if (!isIndexExtended) {
+    return false;
+  }
+
+  // Check other fingers (middle, ring, pinky) are curled
+  const otherFingers = [
+    { mcp: 9, tip: 12, name: 'middle' },  // Middle finger
+    { mcp: 13, tip: 16, name: 'ring' },   // Ring finger
+    { mcp: 17, tip: 20, name: 'pinky' },  // Pinky finger
+  ];
+
+  let curledFingers = 0;
+
+  for (const finger of otherFingers) {
+    const mcp = keypoints[finger.mcp];
+    const tip = keypoints[finger.tip];
+
+    const tipToPalmDist = Math.sqrt(
+      Math.pow(tip[0] - palmBase[0], 2) + Math.pow(tip[1] - palmBase[1], 2)
+    );
+
+    const mcpToPalmDist = Math.sqrt(
+      Math.pow(mcp[0] - palmBase[0], 2) + Math.pow(mcp[1] - palmBase[1], 2)
+    );
+
+    const curlRatio = tipToPalmDist / mcpToPalmDist;
+    
+    // Same curl threshold as fist detection
+    if (curlRatio < 1.2) {
+      curledFingers++;
+    }
+  }
+
+  // Consider it pointing if index is extended and at least 2 out of 3 other fingers are curled
+  // (thumb position is flexible)
+  return curledFingers >= 2;
+};
+
+/**
+ * Classify hand gesture based on keypoints
+ * Priority: pointing > fist > open > relaxed
+ * 
+ * @param keypoints Hand landmark keypoints
+ * @returns Detected gesture type
+ */
+export const classifyHandGesture = (keypoints: Array<[number, number]> | undefined): HandGesture => {
+  if (!keypoints || keypoints.length < 21) {
+    return 'relaxed';
+  }
+
+  // Check gestures in priority order
+  // Priority: pointing > fist (as specified)
+  
+  if (isHandPointing(keypoints)) {
+    return 'pointing';
+  }
+  
+  if (isFistClenched(keypoints)) {
+    return 'fist';
+  }
+  
+  if (isHandOpen(keypoints)) {
+    return 'open';
+  }
+  
+  // Default fallback
+  return 'relaxed';
+};
+
+/**
+ * Temporal gesture buffer for smoothing noisy detection
+ */
+export class GestureBuffer {
+  private buffer: HandGesture[] = [];
+  private readonly bufferSize: number;
+  private readonly confirmationThreshold: number;
+  private currentGesture: HandGesture = 'relaxed';
+
+  /**
+   * @param bufferSize Number of frames to keep in buffer (default: 5)
+   * @param confirmationThreshold Number of consistent non-'relaxed' frames required to confirm gesture (default: 3)
+   */
+  constructor(bufferSize: number = 5, confirmationThreshold: number = 3) {
+    this.bufferSize = bufferSize;
+    this.confirmationThreshold = confirmationThreshold;
+  }
+
+  /**
+   * Add a new gesture sample to the buffer
+   * @param gesture Detected gesture for current frame
+   * @returns Updated confirmed gesture (may be unchanged)
+   */
+  addSample(gesture: HandGesture): HandGesture {
+    // Add to buffer
+    this.buffer.push(gesture);
+    
+    // Keep buffer at fixed size
+    if (this.buffer.length > this.bufferSize) {
+      this.buffer.shift();
+    }
+
+    // Count occurrences of each non-'relaxed' gesture in buffer
+    const gestureCounts: Record<HandGesture, number> = {
+      fist: 0,
+      open: 0,
+      pointing: 0,
+      relaxed: 0,
+    };
+
+    this.buffer.forEach(g => {
+      gestureCounts[g]++;
+    });
+
+    // Find most common non-'relaxed' gesture
+    let maxCount = 0;
+    let dominantGesture: HandGesture = 'relaxed';
+
+    // Check in priority order: pointing > fist > open
+    const priorityOrder: HandGesture[] = ['pointing', 'fist', 'open'];
+    
+    for (const g of priorityOrder) {
+      if (gestureCounts[g] > maxCount) {
+        maxCount = gestureCounts[g];
+        dominantGesture = g;
+      }
+    }
+
+    // Update current gesture if we have enough consistent samples
+    if (maxCount >= this.confirmationThreshold && dominantGesture !== 'relaxed') {
+      if (this.currentGesture !== dominantGesture) {
+        const previousGesture = this.currentGesture;
+        this.currentGesture = dominantGesture;
+        
+        console.log('[Gesture Recognition] 🖐️ Gesture changed:', {
+          from: previousGesture,
+          to: dominantGesture,
+          confirmationCount: maxCount,
+          threshold: this.confirmationThreshold,
+          bufferState: gestureCounts,
+        });
+      }
+    }
+
+    return this.currentGesture;
+  }
+
+  /**
+   * Get current confirmed gesture
+   */
+  getCurrentGesture(): HandGesture {
+    return this.currentGesture;
+  }
+
+  /**
+   * Reset buffer and current gesture
+   */
+  reset(): void {
+    this.buffer = [];
+    this.currentGesture = 'relaxed';
+    console.log('[Gesture Recognition] 🔄 Buffer reset to relaxed state');
+  }
+
+  /**
+   * Get buffer state for debugging
+   */
+  getBufferState(): { buffer: HandGesture[]; current: HandGesture } {
+    return {
+      buffer: [...this.buffer],
+      current: this.currentGesture,
+    };
+  }
+}
 
 /**
  * Calculate bounding box coordinates for a hand

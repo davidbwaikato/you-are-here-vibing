@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/store/store';
-import { setVideoOverlayEnabled, setSelectedMarkerIndex, setFistTrackingActive } from '@/store/streetViewSlice';
+import { setVideoOverlayEnabled, setSelectedMarkerIndex, setFistTrackingActive, setPov } from '@/store/streetViewSlice';
 import { useHumanDetection } from '@/hooks/useHumanDetection';
 import { useCamera } from '@/hooks/useCamera';
 import { useCanvasSetup } from '@/hooks/useCanvasSetup';
@@ -9,6 +9,7 @@ import { useDetectionLoop } from '@/hooks/useDetectionLoop';
 import { useSegmentationLoop } from '@/hooks/useSegmentationLoop';
 import { useRenderLoop } from '@/hooks/useRenderLoop';
 import { TrackingControls } from './TrackingControls';
+import { HandGesture } from '@/types/detection';
 
 interface MotionTrackingOverlayProps {
   panoramaRef: React.MutableRefObject<google.maps.StreetViewPanorama | null>;
@@ -47,6 +48,11 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
   
   // Track if we were tracking before context loss
   const wasTrackingBeforeContextLossRef = useRef(false);
+  
+  // Shoulder rotation tracking state
+  const baseShoulderAngleRef = useRef<number | null>(null);
+  const baseHeadingRef = useRef<number | null>(null);
+  const SHOULDER_ROTATION_SENSITIVITY = 2.0; // Degrees of heading change per degree of shoulder rotation
   
   // Detection loop with FPS tracking
   const {
@@ -97,44 +103,69 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
     cachedParts: prevSkeletonPartsRef,
   });
 
+  // CRITICAL: Shoulder rotation → panorama heading control
+  useEffect(() => {
+    if (!isInitialized || !isCameraActive || !isTrackingEnabled || webglContextLost) {
+      // Reset calibration when tracking stops
+      if (baseShoulderAngleRef.current !== null) {
+        console.log('[Shoulder Rotation] Tracking stopped - resetting calibration');
+        baseShoulderAngleRef.current = null;
+        baseHeadingRef.current = null;
+      }
+      return;
+    }
+
+    if (shoulderAngle === null) {
+      // No shoulder data - reset calibration
+      if (baseShoulderAngleRef.current !== null) {
+        console.log('[Shoulder Rotation] Lost shoulder tracking - resetting calibration');
+        baseShoulderAngleRef.current = null;
+        baseHeadingRef.current = null;
+      }
+      return;
+    }
+
+    // Initialize calibration on first valid shoulder angle
+    if (baseShoulderAngleRef.current === null) {
+      baseShoulderAngleRef.current = shoulderAngle;
+      baseHeadingRef.current = pov.heading;
+      console.log('[Shoulder Rotation] 🎯 Calibration initialized:', {
+        baseShoulderAngle: shoulderAngle.toFixed(2),
+        baseHeading: pov.heading.toFixed(2),
+      });
+      return;
+    }
+
+    // Calculate shoulder rotation delta from calibration point
+    const shoulderDelta = shoulderAngle - baseShoulderAngleRef.current;
+    
+    // Apply sensitivity and calculate new heading
+    const headingDelta = shoulderDelta * SHOULDER_ROTATION_SENSITIVITY;
+    const newHeading = baseHeadingRef.current! + headingDelta;
+    
+    // Normalize heading to 0-360 range
+    const normalizedHeading = ((newHeading % 360) + 360) % 360;
+    
+    console.log('[Shoulder Rotation] 🔄 Updating panorama heading:', {
+      shoulderAngle: shoulderAngle.toFixed(2),
+      shoulderDelta: shoulderDelta.toFixed(2),
+      headingDelta: headingDelta.toFixed(2),
+      newHeading: normalizedHeading.toFixed(2),
+      currentPitch: pov.pitch.toFixed(2),
+    });
+    
+    // Update Redux state (will trigger panorama update in StreetViewCanvas)
+    dispatch(setPov({
+      heading: normalizedHeading,
+      pitch: pov.pitch, // Keep current pitch
+    }));
+    
+  }, [shoulderAngle, isInitialized, isCameraActive, isTrackingEnabled, webglContextLost, pov.heading, pov.pitch, dispatch]);
+
   // Fist gesture tracking state
   const trackedHandRef = useRef<'left' | 'right' | null>(null);
   const lastFistTopYRef = useRef<number | null>(null);
-  const wasFistBeforeDisappearRef = useRef<boolean>(false);
-  
-  // ADAPTIVE: Sustained open-hand detection with frame-rate-based threshold
-  const openHandFrameCountRef = useRef<number>(0);
-  const TARGET_OPEN_HAND_TIME_MS = 3000; // Target 3 seconds for sustained detection
-  
-  // Calculate required frames based on current detection FPS
-  const calculateRequiredFrames = (fps: number): number => {
-    if (fps <= 0) return 5; // Fallback to 5 frames if fps not available
-    
-    // Calculate frames needed for TARGET_OPEN_HAND_TIME_MS at current fps
-    const requiredFrames = Math.ceil((fps * TARGET_OPEN_HAND_TIME_MS) / 1000);
-    
-    // Clamp between reasonable bounds (min 3 frames, max 30 frames)
-    const clampedFrames = Math.max(3, Math.min(30, requiredFrames));
-    
-    return clampedFrames;
-  };
-  
-  // Track the required frames threshold (recalculated when fps changes)
-  const requiredOpenHandFramesRef = useRef<number>(5);
-  
-  // Update required frames when detection fps changes
-  useEffect(() => {
-    if (detectionFps > 0) {
-      const newRequiredFrames = calculateRequiredFrames(detectionFps);
-      
-      if (newRequiredFrames !== requiredOpenHandFramesRef.current) {
-        const oldFrames = requiredOpenHandFramesRef.current;
-        requiredOpenHandFramesRef.current = newRequiredFrames;
-        
-        console.log(`[Fist Tracking] 📊 Adaptive threshold updated: ${oldFrames} → ${newRequiredFrames} frames (fps: ${detectionFps.toFixed(1)}, target: ${TARGET_OPEN_HAND_TIME_MS}ms)`);
-      }
-    }
-  }, [detectionFps]);
+  const previousGestureRef = useRef<HandGesture>('relaxed');
   
   // Constants for fist tracking
   const FIST_VERTICAL_THRESHOLD = 50; // Same as middle-mouse drag threshold
@@ -154,8 +185,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         console.log('[Fist Tracking] Conditions not met - resetting tracking state');
         trackedHandRef.current = null;
         lastFistTopYRef.current = null;
-        wasFistBeforeDisappearRef.current = false;
-        openHandFrameCountRef.current = 0;
+        previousGestureRef.current = 'relaxed';
         dispatch(setFistTrackingActive(false));
       }
       return;
@@ -166,8 +196,11 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
       const result = detectionResultRef.current;
       if (!result) return;
 
-      const leftFist = result.leftHand.detected && result.leftHand.isFist;
-      const rightFist = result.rightHand.detected && result.rightHand.isFist;
+      const leftGesture = result.leftHand.gesture;
+      const rightGesture = result.rightHand.gesture;
+
+      const leftFist = result.leftHand.detected && leftGesture === 'fist';
+      const rightFist = result.rightHand.detected && rightGesture === 'fist';
 
       // Case 1: Both fists clenched - no tracking (reserved for future feature)
       if (leftFist && rightFist) {
@@ -175,8 +208,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
           console.log('[Fist Tracking] Both fists detected - pausing tracking');
           trackedHandRef.current = null;
           lastFistTopYRef.current = null;
-          wasFistBeforeDisappearRef.current = false;
-          openHandFrameCountRef.current = 0;
+          previousGestureRef.current = 'relaxed';
           dispatch(setFistTrackingActive(false));
         }
         return;
@@ -187,19 +219,13 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         const currentHand = leftFist ? 'left' : 'right';
         const handData = leftFist ? result.leftHand : result.rightHand;
 
-        // Reset open-hand counter when fist is detected
-        if (openHandFrameCountRef.current > 0) {
-          console.log('[Fist Tracking] Fist detected - resetting open-hand counter from', openHandFrameCountRef.current);
-          openHandFrameCountRef.current = 0;
-        }
-
         // Start tracking new hand
         if (trackedHandRef.current === null) {
           if (handData.boundingBox) {
             const [, minY] = handData.boundingBox;
             trackedHandRef.current = currentHand;
             lastFistTopYRef.current = minY;
-            wasFistBeforeDisappearRef.current = true;
+            previousGestureRef.current = 'fist';
             dispatch(setFistTrackingActive(true));
             console.log(`[Fist Tracking] Started tracking ${currentHand} hand at Y=${minY.toFixed(1)}`);
           }
@@ -237,7 +263,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
               lastFistTopYRef.current = currentMinY;
             }
 
-            wasFistBeforeDisappearRef.current = true;
+            previousGestureRef.current = 'fist';
           }
           return;
         }
@@ -248,8 +274,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
           console.log(`[Fist Tracking] Switched from ${trackedHandRef.current} to ${currentHand} hand at Y=${minY.toFixed(1)}`);
           trackedHandRef.current = currentHand;
           lastFistTopYRef.current = minY;
-          wasFistBeforeDisappearRef.current = true;
-          openHandFrameCountRef.current = 0;
+          previousGestureRef.current = 'fist';
         }
         return;
       }
@@ -259,61 +284,41 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         // Check if we were tracking a hand before
         if (trackedHandRef.current !== null) {
           const trackedHandData = trackedHandRef.current === 'left' ? result.leftHand : result.rightHand;
+          const currentGesture = trackedHandData.gesture;
 
-          // Sub-case 3a: Tracked hand disappeared but was fist before
-          if (!trackedHandData.detected && wasFistBeforeDisappearRef.current) {
+          // Sub-case 3a: Tracked hand disappeared (not detected)
+          if (!trackedHandData.detected) {
             console.log(`[Fist Tracking] ${trackedHandRef.current} hand disappeared - maintaining tracking state`);
-            // Reset open-hand counter when hand disappears
-            if (openHandFrameCountRef.current > 0) {
-              console.log('[Fist Tracking] Hand disappeared - resetting open-hand counter from', openHandFrameCountRef.current);
-              openHandFrameCountRef.current = 0;
-            }
             // Keep tracking state, wait for hand to reappear
             return;
           }
 
-          // Sub-case 3b: Tracked hand reappeared and is now open
-          if (trackedHandData.detected && !trackedHandData.isFist && wasFistBeforeDisappearRef.current) {
-            // Increment open-hand frame counter
-            openHandFrameCountRef.current++;
+          // Sub-case 3b: Tracked hand changed gesture from 'fist' to 'open'
+          if (previousGestureRef.current === 'fist' && currentGesture === 'open') {
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand gesture changed from 'fist' to 'open' - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
             
-            // Get current required frames threshold
-            const requiredFrames = requiredOpenHandFramesRef.current;
-            
-            console.log(`[Fist Tracking] ${trackedHandRef.current} hand detected as OPEN - frame count: ${openHandFrameCountRef.current}/${requiredFrames} (fps: ${detectionFps.toFixed(1)})`);
-            
-            // Only trigger teleport after sustained open-hand detection
-            if (openHandFrameCountRef.current >= requiredFrames) {
-              const timeElapsed = (openHandFrameCountRef.current / detectionFps) * 1000;
-              console.log(`[Fist Tracking] ✅ SUSTAINED OPEN HAND CONFIRMED (${openHandFrameCountRef.current} frames, ${timeElapsed.toFixed(0)}ms) - triggering teleport to marker ${selectedMarkerIndexRef.current}`);
-              
-              // Trigger teleport via callback
-              if (onTeleportToMarker) {
-                console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
-                onTeleportToMarker(selectedMarkerIndexRef.current);
-              } else {
-                console.warn('[Fist Tracking] onTeleportToMarker callback not provided!');
-              }
-              
-              // Reset tracking state
-              trackedHandRef.current = null;
-              lastFistTopYRef.current = null;
-              wasFistBeforeDisappearRef.current = false;
-              openHandFrameCountRef.current = 0;
-              dispatch(setFistTrackingActive(false));
+            // Trigger teleport via callback
+            if (onTeleportToMarker) {
+              console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
+              onTeleportToMarker(selectedMarkerIndexRef.current);
             } else {
-              console.log(`[Fist Tracking] ⏳ Waiting for sustained open hand... (${openHandFrameCountRef.current}/${requiredFrames} frames)`);
+              console.warn('[Fist Tracking] onTeleportToMarker callback not provided!');
             }
+            
+            // Reset tracking state
+            trackedHandRef.current = null;
+            lastFistTopYRef.current = null;
+            previousGestureRef.current = 'relaxed';
+            dispatch(setFistTrackingActive(false));
             return;
           }
 
-          // Sub-case 3c: Tracked hand reappeared but was never a fist (shouldn't happen, but handle gracefully)
-          if (trackedHandData.detected && !trackedHandData.isFist && !wasFistBeforeDisappearRef.current) {
-            console.log(`[Fist Tracking] ${trackedHandRef.current} hand detected but not a fist - resetting tracking`);
+          // Sub-case 3c: Tracked hand changed to other gestures (pointing, relaxed)
+          if (currentGesture !== 'fist') {
+            console.log(`[Fist Tracking] ${trackedHandRef.current} hand gesture changed from 'fist' to '${currentGesture}' - resetting tracking (no teleport)`);
             trackedHandRef.current = null;
             lastFistTopYRef.current = null;
-            wasFistBeforeDisappearRef.current = false;
-            openHandFrameCountRef.current = 0;
+            previousGestureRef.current = 'relaxed';
             dispatch(setFistTrackingActive(false));
             return;
           }
@@ -335,7 +340,7 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [isInitialized, isCameraActive, isTrackingEnabled, webglContextLost, detectionResultRef, detectionFps, dispatch, onTeleportToMarker]);
+  }, [isInitialized, isCameraActive, isTrackingEnabled, webglContextLost, detectionResultRef, dispatch, onTeleportToMarker]);
 
   // WebGL context loss/restoration handlers
   useEffect(() => {
@@ -362,9 +367,12 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
       // Clear fist tracking state
       trackedHandRef.current = null;
       lastFistTopYRef.current = null;
-      wasFistBeforeDisappearRef.current = false;
-      openHandFrameCountRef.current = 0;
+      previousGestureRef.current = 'relaxed';
       dispatch(setFistTrackingActive(false));
+      
+      // Clear shoulder rotation calibration
+      baseShoulderAngleRef.current = null;
+      baseHeadingRef.current = null;
       
       // Clear canvases
       const ctx = canvas.getContext('2d');
@@ -428,9 +436,12 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
         // Clear fist tracking state
         trackedHandRef.current = null;
         lastFistTopYRef.current = null;
-        wasFistBeforeDisappearRef.current = false;
-        openHandFrameCountRef.current = 0;
+        previousGestureRef.current = 'relaxed';
         dispatch(setFistTrackingActive(false));
+        
+        // Clear shoulder rotation calibration
+        baseShoulderAngleRef.current = null;
+        baseHeadingRef.current = null;
         
         console.log('[Persistence] Cache cleared - tracking disabled');
       }
