@@ -20,19 +20,11 @@ export interface HandDetection {
   keypoints?: Array<[number, number]>;
 }
 
-/**
- * Hand gesture types
- */
-export type HandGesture = 'fist' | 'open' | 'pointing' | 'relaxed';
-
-/**
- * Enhanced hand detection data with gesture recognition and bounding box
- */
+// Enhanced hand detection data with fist detection and bounding box
 export interface HandDetectionData {
   detected: boolean;                              // True if hand was detected
   boundingBox: [number, number, number, number] | null;  // [minX, minY, maxX, maxY] if hand present
-  isFist: boolean;                                // True if hand present and clenched (legacy - kept for compatibility)
-  gesture: HandGesture;                           // Recognized gesture type
+  isFist: boolean;                                // True if hand present and clenched
 }
 
 export interface HumanResult {
