@@ -230,8 +230,10 @@ export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: Motio
             
             // Trigger teleport via callback
             if (onTeleportToMarker) {
-              console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
-              onTeleportToMarker(selectedMarkerIndexRef.current);
+							if (selectedMarkerIndexRef.current !== 0) {
+                  console.log('[Fist Tracking] Calling onTeleportToMarker callback with index:', selectedMarkerIndexRef.current);
+                  onTeleportToMarker(selectedMarkerIndexRef.current);
+							}
             } else {
               console.warn('[Fist Tracking] onTeleportToMarker callback not provided!');
             }
