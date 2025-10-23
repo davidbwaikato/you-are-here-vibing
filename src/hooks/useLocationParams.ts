@@ -4,7 +4,19 @@ import { parseLocationParams } from '../utils/urlParams';
 import { geocodeLocation, type LatLng } from '../services/geocoding';
 import { fetchWalkingRoute, type RouteResult } from '../services/routing';
 import { fetchPlaceDetails } from '../services/places';
-import { setPosition, setSourceLocation, setDestinationLocation, setSourceAddress, setDestinationAddress, setSourceDetails, setDestinationDetails, setRoutePolyline } from '../store/streetViewSlice';
+import { generateEnhancedDescription } from '../services/openai';
+import { 
+  setPosition, 
+  setSourceLocation, 
+  setDestinationLocation, 
+  setSourceAddress, 
+  setDestinationAddress, 
+  setSourceDetails, 
+  setDestinationDetails,
+  updateSourceEnhancedDescription,
+  updateDestinationEnhancedDescription,
+  setRoutePolyline 
+} from '../store/streetViewSlice';
 
 interface LocationState {
   isInitializing: boolean;
@@ -29,7 +41,8 @@ const DEFAULT_DESTINATION_LOCATION: LatLng = {
 };
 
 /**
- * Hook to handle URL parameter parsing, geocoding, place details fetching, and route calculation
+ * Hook to handle URL parameter parsing, geocoding, place details fetching, 
+ * OpenAI enhancement, and route calculation
  */
 export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
   const dispatch = useDispatch();
@@ -86,6 +99,21 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         if ('details' in sourceDetailsResult) {
           console.log('[useLocationParams] ✅ Source place details retrieved:', sourceDetailsResult.details);
           dispatch(setSourceDetails(sourceDetailsResult.details));
+          
+          // Generate enhanced description for source
+          console.log('[useLocationParams] 🤖 Generating enhanced description for source...');
+          const enhancedResult = await generateEnhancedDescription(
+            sourceDetailsResult.details.name,
+            sourceDetailsResult.details.description,
+            sourceDetailsResult.details.types
+          );
+          
+          if ('enhancedDescription' in enhancedResult) {
+            console.log('[useLocationParams] ✅ Source enhanced description generated');
+            dispatch(updateSourceEnhancedDescription(enhancedResult.enhancedDescription));
+          } else {
+            console.warn('[useLocationParams] ⚠️ Failed to generate source enhanced description:', enhancedResult.error);
+          }
         } else {
           console.warn('[useLocationParams] ⚠️ Failed to fetch source place details:', sourceDetailsResult.error);
           dispatch(setSourceDetails(null));
@@ -94,6 +122,21 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         if ('details' in destinationDetailsResult) {
           console.log('[useLocationParams] ✅ Destination place details retrieved:', destinationDetailsResult.details);
           dispatch(setDestinationDetails(destinationDetailsResult.details));
+          
+          // Generate enhanced description for destination
+          console.log('[useLocationParams] 🤖 Generating enhanced description for destination...');
+          const enhancedResult = await generateEnhancedDescription(
+            destinationDetailsResult.details.name,
+            destinationDetailsResult.details.description,
+            destinationDetailsResult.details.types
+          );
+          
+          if ('enhancedDescription' in enhancedResult) {
+            console.log('[useLocationParams] ✅ Destination enhanced description generated');
+            dispatch(updateDestinationEnhancedDescription(enhancedResult.enhancedDescription));
+          } else {
+            console.warn('[useLocationParams] ⚠️ Failed to generate destination enhanced description:', enhancedResult.error);
+          }
         } else {
           console.warn('[useLocationParams] ⚠️ Failed to fetch destination place details:', destinationDetailsResult.error);
           dispatch(setDestinationDetails(null));
@@ -129,7 +172,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         if (!('error' in routeResult)) {
           dispatch(setRoutePolyline(routeResult.decodedPolyline));
         }
-        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations, place details, and route');
+        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations, place details, enhanced descriptions, and route');
         console.log('[useLocationParams] ✅ Initialization complete');
         return;
       }
@@ -208,6 +251,21 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
             if ('details' in sourceDetailsResult) {
               console.log('[useLocationParams] ✅ Source place details retrieved:', sourceDetailsResult.details);
               dispatch(setSourceDetails(sourceDetailsResult.details));
+              
+              // Generate enhanced description for source
+              console.log('[useLocationParams] 🤖 Generating enhanced description for source...');
+              const enhancedResult = await generateEnhancedDescription(
+                sourceDetailsResult.details.name,
+                sourceDetailsResult.details.description,
+                sourceDetailsResult.details.types
+              );
+              
+              if ('enhancedDescription' in enhancedResult) {
+                console.log('[useLocationParams] ✅ Source enhanced description generated');
+                dispatch(updateSourceEnhancedDescription(enhancedResult.enhancedDescription));
+              } else {
+                console.warn('[useLocationParams] ⚠️ Failed to generate source enhanced description:', enhancedResult.error);
+              }
             } else {
               console.warn('[useLocationParams] ⚠️ Failed to fetch source place details:', sourceDetailsResult.error);
               dispatch(setSourceDetails(null));
@@ -236,6 +294,21 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
             if ('details' in destinationDetailsResult) {
               console.log('[useLocationParams] ✅ Destination place details retrieved:', destinationDetailsResult.details);
               dispatch(setDestinationDetails(destinationDetailsResult.details));
+              
+              // Generate enhanced description for destination
+              console.log('[useLocationParams] 🤖 Generating enhanced description for destination...');
+              const enhancedResult = await generateEnhancedDescription(
+                destinationDetailsResult.details.name,
+                destinationDetailsResult.details.description,
+                destinationDetailsResult.details.types
+              );
+              
+              if ('enhancedDescription' in enhancedResult) {
+                console.log('[useLocationParams] ✅ Destination enhanced description generated');
+                dispatch(updateDestinationEnhancedDescription(enhancedResult.enhancedDescription));
+              } else {
+                console.warn('[useLocationParams] ⚠️ Failed to generate destination enhanced description:', enhancedResult.error);
+              }
             } else {
               console.warn('[useLocationParams] ⚠️ Failed to fetch destination place details:', destinationDetailsResult.error);
               dispatch(setDestinationDetails(null));
@@ -262,7 +335,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           }
         }
 
-        console.log('[useLocationParams] ✅ All initialization complete (including place details), ready to show main app');
+        console.log('[useLocationParams] ✅ All initialization complete (including place details and enhanced descriptions), ready to show main app');
         setState(newState);
       } catch (error) {
         console.error('[useLocationParams] ❌ Initialization error:', error);

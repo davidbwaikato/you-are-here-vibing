@@ -9,6 +9,7 @@ interface LocationDetails {
   description: string;
   name: string;
   types: string[];
+  enhancedDescription?: string;
 }
 
 interface StreetViewState {
@@ -122,6 +123,20 @@ const streetViewSlice = createSlice({
       state.destinationDetails = action.payload;
       console.log('[Redux Reducer] New destinationDetails state:', state.destinationDetails);
     },
+    updateSourceEnhancedDescription: (state, action: PayloadAction<string>) => {
+      console.log('[Redux Reducer] updateSourceEnhancedDescription called with length:', action.payload.length);
+      if (state.sourceDetails) {
+        state.sourceDetails.enhancedDescription = action.payload;
+        console.log('[Redux Reducer] Source enhanced description updated');
+      }
+    },
+    updateDestinationEnhancedDescription: (state, action: PayloadAction<string>) => {
+      console.log('[Redux Reducer] updateDestinationEnhancedDescription called with length:', action.payload.length);
+      if (state.destinationDetails) {
+        state.destinationDetails.enhancedDescription = action.payload;
+        console.log('[Redux Reducer] Destination enhanced description updated');
+      }
+    },
     setRoutePolyline: (state, action: PayloadAction<LatLng[]>) => {
       console.log('[Redux Reducer] setRoutePolyline called with:', {
         pointCount: action.payload.length,
@@ -181,6 +196,8 @@ export const {
   setDestinationAddress,
   setSourceDetails,
   setDestinationDetails,
+  updateSourceEnhancedDescription,
+  updateDestinationEnhancedDescription,
   setRoutePolyline,
   setSelectedMarkerIndex,
   setFistTrackingActive,

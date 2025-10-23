@@ -2,6 +2,7 @@ export interface PlaceDetails {
   description: string;
   name: string;
   types: string[];
+  enhancedDescription?: string;
 }
 
 export interface PlaceDetailsResult {
