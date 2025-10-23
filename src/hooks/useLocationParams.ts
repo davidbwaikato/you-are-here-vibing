@@ -4,7 +4,7 @@ import { parseLocationParams } from '../utils/urlParams';
 import { geocodeLocation, type LatLng } from '../services/geocoding';
 import { fetchWalkingRoute, type RouteResult } from '../services/routing';
 import { fetchPlaceDetails } from '../services/places';
-import { generateEnhancedDescription } from '../services/openai';
+import { generateEnhancedDescription, synthesizeTextToSpeech } from '../services/openai';
 import { 
   setPosition, 
   setSourceLocation, 
@@ -15,6 +15,8 @@ import {
   setDestinationDetails,
   updateSourceEnhancedDescription,
   updateDestinationEnhancedDescription,
+  updateSourceAudio,
+  updateDestinationAudio,
   setRoutePolyline 
 } from '../store/streetViewSlice';
 
@@ -42,7 +44,7 @@ const DEFAULT_DESTINATION_LOCATION: LatLng = {
 
 /**
  * Hook to handle URL parameter parsing, geocoding, place details fetching, 
- * OpenAI enhancement, and route calculation
+ * OpenAI enhancement, TTS synthesis, and route calculation
  */
 export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
   const dispatch = useDispatch();
@@ -95,7 +97,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           fetchPlaceDetails(DEFAULT_DESTINATION_LOCATION),
         ]);
 
-        // Update Redux with place details
+        // Process source location
         if ('details' in sourceDetailsResult) {
           console.log('[useLocationParams] ✅ Source place details retrieved:', sourceDetailsResult.details);
           dispatch(setSourceDetails(sourceDetailsResult.details));
@@ -111,6 +113,23 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           if ('enhancedDescription' in enhancedResult) {
             console.log('[useLocationParams] ✅ Source enhanced description generated');
             dispatch(updateSourceEnhancedDescription(enhancedResult.enhancedDescription));
+            
+            // Synthesize audio for source
+            console.log('[useLocationParams] 🎤 Synthesizing audio for source...');
+            const audioResult = await synthesizeTextToSpeech(
+              enhancedResult.enhancedDescription,
+              'alloy'
+            );
+            
+            if ('audioUrl' in audioResult) {
+              console.log('[useLocationParams] ✅ Source audio synthesized:', audioResult.filename);
+              dispatch(updateSourceAudio({
+                audioUrl: audioResult.audioUrl,
+                audioFilename: audioResult.filename,
+              }));
+            } else {
+              console.warn('[useLocationParams] ⚠️ Failed to synthesize source audio:', audioResult.error);
+            }
           } else {
             console.warn('[useLocationParams] ⚠️ Failed to generate source enhanced description:', enhancedResult.error);
           }
@@ -119,6 +138,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           dispatch(setSourceDetails(null));
         }
 
+        // Process destination location
         if ('details' in destinationDetailsResult) {
           console.log('[useLocationParams] ✅ Destination place details retrieved:', destinationDetailsResult.details);
           dispatch(setDestinationDetails(destinationDetailsResult.details));
@@ -134,6 +154,23 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           if ('enhancedDescription' in enhancedResult) {
             console.log('[useLocationParams] ✅ Destination enhanced description generated');
             dispatch(updateDestinationEnhancedDescription(enhancedResult.enhancedDescription));
+            
+            // Synthesize audio for destination
+            console.log('[useLocationParams] 🎤 Synthesizing audio for destination...');
+            const audioResult = await synthesizeTextToSpeech(
+              enhancedResult.enhancedDescription,
+              'alloy'
+            );
+            
+            if ('audioUrl' in audioResult) {
+              console.log('[useLocationParams] ✅ Destination audio synthesized:', audioResult.filename);
+              dispatch(updateDestinationAudio({
+                audioUrl: audioResult.audioUrl,
+                audioFilename: audioResult.filename,
+              }));
+            } else {
+              console.warn('[useLocationParams] ⚠️ Failed to synthesize destination audio:', audioResult.error);
+            }
           } else {
             console.warn('[useLocationParams] ⚠️ Failed to generate destination enhanced description:', enhancedResult.error);
           }
@@ -172,7 +209,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         if (!('error' in routeResult)) {
           dispatch(setRoutePolyline(routeResult.decodedPolyline));
         }
-        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations, place details, enhanced descriptions, and route');
+        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations, place details, enhanced descriptions, audio, and route');
         console.log('[useLocationParams] ✅ Initialization complete');
         return;
       }
@@ -263,6 +300,23 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
               if ('enhancedDescription' in enhancedResult) {
                 console.log('[useLocationParams] ✅ Source enhanced description generated');
                 dispatch(updateSourceEnhancedDescription(enhancedResult.enhancedDescription));
+                
+                // Synthesize audio for source
+                console.log('[useLocationParams] 🎤 Synthesizing audio for source...');
+                const audioResult = await synthesizeTextToSpeech(
+                  enhancedResult.enhancedDescription,
+                  'alloy'
+                );
+                
+                if ('audioUrl' in audioResult) {
+                  console.log('[useLocationParams] ✅ Source audio synthesized:', audioResult.filename);
+                  dispatch(updateSourceAudio({
+                    audioUrl: audioResult.audioUrl,
+                    audioFilename: audioResult.filename,
+                  }));
+                } else {
+                  console.warn('[useLocationParams] ⚠️ Failed to synthesize source audio:', audioResult.error);
+                }
               } else {
                 console.warn('[useLocationParams] ⚠️ Failed to generate source enhanced description:', enhancedResult.error);
               }
@@ -306,6 +360,23 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
               if ('enhancedDescription' in enhancedResult) {
                 console.log('[useLocationParams] ✅ Destination enhanced description generated');
                 dispatch(updateDestinationEnhancedDescription(enhancedResult.enhancedDescription));
+                
+                // Synthesize audio for destination
+                console.log('[useLocationParams] 🎤 Synthesizing audio for destination...');
+                const audioResult = await synthesizeTextToSpeech(
+                  enhancedResult.enhancedDescription,
+                  'alloy'
+                );
+                
+                if ('audioUrl' in audioResult) {
+                  console.log('[useLocationParams] ✅ Destination audio synthesized:', audioResult.filename);
+                  dispatch(updateDestinationAudio({
+                    audioUrl: audioResult.audioUrl,
+                    audioFilename: audioResult.filename,
+                  }));
+                } else {
+                  console.warn('[useLocationParams] ⚠️ Failed to synthesize destination audio:', audioResult.error);
+                }
               } else {
                 console.warn('[useLocationParams] ⚠️ Failed to generate destination enhanced description:', enhancedResult.error);
               }
@@ -335,7 +406,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           }
         }
 
-        console.log('[useLocationParams] ✅ All initialization complete (including place details and enhanced descriptions), ready to show main app');
+        console.log('[useLocationParams] ✅ All initialization complete (including place details, enhanced descriptions, and audio synthesis), ready to show main app');
         setState(newState);
       } catch (error) {
         console.error('[useLocationParams] ❌ Initialization error:', error);

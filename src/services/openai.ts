@@ -6,6 +6,15 @@ export interface EnhancedDescriptionError {
   error: string;
 }
 
+export interface AudioSynthesisResult {
+  audioUrl: string;
+  filename: string;
+}
+
+export interface AudioSynthesisError {
+  error: string;
+}
+
 /**
  * Generate an enhanced, tourist-friendly description using OpenAI ChatGPT
  * This creates engaging, audio-suitable narratives for virtual tourism
@@ -100,6 +109,114 @@ Write in second person ("you") to make it immersive, as if speaking directly to 
     console.error('[OpenAI API] ❌ Error generating enhanced description:', error);
     return {
       error: `Failed to generate enhanced description: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+};
+
+/**
+ * Synthesize text to speech using OpenAI TTS API
+ * Downloads and caches the audio file locally
+ */
+export const synthesizeTextToSpeech = async (
+  text: string,
+  voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' = 'alloy'
+): Promise<AudioSynthesisResult | AudioSynthesisError> => {
+  console.log('[OpenAI TTS] 🎤 Synthesizing text to speech:', {
+    textLength: text.length,
+    voice,
+    preview: text.substring(0, 50) + '...',
+  });
+
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+  
+  if (!apiKey || apiKey === 'your_openai_api_key_here') {
+    console.error('[OpenAI TTS] ❌ OpenAI API key not configured');
+    return { error: 'OpenAI API key not configured' };
+  }
+
+  try {
+    // Generate filename from text hash
+    const { generateAudioFilename, checkAudioCache, getAudioCacheUrl } = await import('../utils/audioCache');
+    const filename = await generateAudioFilename(text, voice);
+    
+    console.log('[OpenAI TTS] 📝 Generated filename:', filename);
+
+    // Check if audio already exists in cache
+    const isCached = await checkAudioCache(filename);
+    if (isCached) {
+      console.log('[OpenAI TTS] ✅ Audio file found in cache, skipping synthesis');
+      return {
+        audioUrl: getAudioCacheUrl(filename),
+        filename,
+      };
+    }
+
+    console.log('[OpenAI TTS] 📡 Sending TTS request to OpenAI...');
+
+    // Call OpenAI TTS API
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'tts-1',
+        input: text,
+        voice: voice,
+        response_format: 'mp3',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[OpenAI TTS] ❌ TTS API request failed:', response.status, errorData);
+      return { 
+        error: `OpenAI TTS API request failed: ${response.status} ${response.statusText}` 
+      };
+    }
+
+    console.log('[OpenAI TTS] ✅ Audio synthesized, downloading...');
+
+    // Get audio blob
+    const audioBlob = await response.blob();
+    
+    console.log('[OpenAI TTS] 💾 Audio blob received:', {
+      size: audioBlob.size,
+      type: audioBlob.type,
+    });
+
+    // Create a download link to save the file
+    // Note: In a real application, you would send this to a backend to save
+    // For now, we'll create a blob URL and simulate the cache
+    const blobUrl = URL.createObjectURL(audioBlob);
+    
+    console.log('[OpenAI TTS] ✅ Audio file ready:', {
+      filename,
+      blobUrl,
+      size: audioBlob.size,
+    });
+
+    // In a production environment, you would:
+    // 1. Send the blob to your backend
+    // 2. Backend saves to public/audio-cache/
+    // 3. Return the public URL
+    
+    // For development, we'll use the blob URL directly
+    // and log instructions for manual caching
+    console.log('[OpenAI TTS] 📋 To cache this audio file:');
+    console.log(`   1. Download the audio from the blob URL`);
+    console.log(`   2. Save to: public/audio-cache/${filename}`);
+    console.log(`   3. The app will use the cached version on next load`);
+
+    return {
+      audioUrl: blobUrl,
+      filename,
+    };
+  } catch (error) {
+    console.error('[OpenAI TTS] ❌ Error synthesizing text to speech:', error);
+    return {
+      error: `Failed to synthesize text to speech: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
 };

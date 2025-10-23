@@ -10,6 +10,8 @@ interface LocationDetails {
   name: string;
   types: string[];
   enhancedDescription?: string;
+  audioUrl?: string;
+  audioFilename?: string;
 }
 
 interface StreetViewState {
@@ -137,6 +139,22 @@ const streetViewSlice = createSlice({
         console.log('[Redux Reducer] Destination enhanced description updated');
       }
     },
+    updateSourceAudio: (state, action: PayloadAction<{ audioUrl: string; audioFilename: string }>) => {
+      console.log('[Redux Reducer] updateSourceAudio called with:', action.payload);
+      if (state.sourceDetails) {
+        state.sourceDetails.audioUrl = action.payload.audioUrl;
+        state.sourceDetails.audioFilename = action.payload.audioFilename;
+        console.log('[Redux Reducer] Source audio updated');
+      }
+    },
+    updateDestinationAudio: (state, action: PayloadAction<{ audioUrl: string; audioFilename: string }>) => {
+      console.log('[Redux Reducer] updateDestinationAudio called with:', action.payload);
+      if (state.destinationDetails) {
+        state.destinationDetails.audioUrl = action.payload.audioUrl;
+        state.destinationDetails.audioFilename = action.payload.audioFilename;
+        console.log('[Redux Reducer] Destination audio updated');
+      }
+    },
     setRoutePolyline: (state, action: PayloadAction<LatLng[]>) => {
       console.log('[Redux Reducer] setRoutePolyline called with:', {
         pointCount: action.payload.length,
@@ -198,6 +216,8 @@ export const {
   setDestinationDetails,
   updateSourceEnhancedDescription,
   updateDestinationEnhancedDescription,
+  updateSourceAudio,
+  updateDestinationAudio,
   setRoutePolyline,
   setSelectedMarkerIndex,
   setFistTrackingActive,
