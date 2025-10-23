@@ -1,43 +1,29 @@
-// Type definitions for human detection results
+// Detection types
 
-export interface BlazePoseKeypoint {
-  distance: [number, number, number];  // 3D distance vector in meters relative to body center
-  part: string;                         // Body part name (e.g., "nose", "leftShoulder", "rightShoulder")
-  position: [number, number, number];   // Scaled pixel coordinates [x, y, z]
-  positionRaw: [number, number, number]; // Normalized coordinates [x, y, z] (0-1 range)
-  score: number;                        // Confidence score (0-1)
+export enum HandGesture {
+  Fist = 'Fist',
+  OpenHand = 'OpenHand',
+  Pointing = 'Pointing',
+  Relaxed = 'Relaxed',
 }
 
-export interface FaceDetection {
-  box?: [number, number, number, number];
-}
-
-export interface BodyDetection {
-  keypoints?: BlazePoseKeypoint[];
-}
-
-export interface HandDetection {
-  keypoints?: Array<[number, number]>;
-}
-
-// Enhanced hand detection data with fist detection and bounding box
 export interface HandDetectionData {
-  detected: boolean;                              // True if hand was detected
-  boundingBox: [number, number, number, number] | null;  // [minX, minY, maxX, maxY] if hand present
-  isFist: boolean;                                // True if hand present and clenched
+  detected: boolean;
+  boundingBox: [number, number, number, number] | null; // [minX, minY, maxX, maxY]
+  gesture: HandGesture;
+  isFist?: boolean; // Add explicit fist flag for backward compatibility
 }
 
 export interface HumanResult {
-  face?: FaceDetection[];
-  body?: BodyDetection[];
-  hand?: HandDetection[];
-  // Enhanced hand detection data
+  face?: Array<{ box?: [number, number, number, number] }>;
+  body?: Array<{ keypoints?: any[] }>;
+  hand?: Array<{ keypoints?: Array<[number, number]> }>;
   leftHand: HandDetectionData;
   rightHand: HandDetectionData;
 }
 
 export interface CachedSkeletonParts {
-  face: FaceDetection[] | null;
-  body: BodyDetection[] | null;
-  hand: HandDetection[] | null;
+  face: Array<{ box?: [number, number, number, number] }> | null;
+  body: Array<{ keypoints?: any[] }> | null;
+  hand: Array<{ keypoints?: Array<[number, number]> }> | null;
 }

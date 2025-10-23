@@ -112,7 +112,7 @@ const drawBody = (
 };
 
 /**
- * Draw hand poses with pre-computed fist detection and bounding boxes
+ * Draw hand poses with pre-computed gesture detection and bounding boxes
  */
 const drawHands = (
   ctx: CanvasRenderingContext2D,
@@ -154,13 +154,18 @@ const drawHands = (
         }
       });
 
-      // Draw bounding box if fist is detected (using pre-computed data)
+      // CRITICAL: Draw bounding box if fist is detected (using pre-computed data)
       if (handDetectionData.detected && handDetectionData.isFist && handDetectionData.boundingBox) {
         const [minX, minY, maxX, maxY] = handDetectionData.boundingBox;
         const scaledMinX = minX * scaleX;
         const scaledMinY = minY * scaleY;
         const scaledMaxX = maxX * scaleX;
         const scaledMaxY = maxY * scaleY;
+        
+        console.log(`[Skeleton Renderer] Drawing fist bounding box for ${index === 0 ? 'LEFT' : 'RIGHT'} hand:`, {
+          original: handDetectionData.boundingBox,
+          scaled: [scaledMinX, scaledMinY, scaledMaxX, scaledMaxY],
+        });
         
         // Draw rectangular box around fist
         ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)'; // Red color for fist detection

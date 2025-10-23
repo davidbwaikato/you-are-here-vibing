@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { setPov } from '@/store/streetViewSlice';
-import { HumanResult, CachedSkeletonParts, HandDetectionData } from '@/types/detection';
+import { HumanResult, CachedSkeletonParts, HandDetectionData, HandGesture } from '@/types/detection';
 import { deepCopyFace, deepCopyBody, deepCopyHand } from '@/utils/cacheHelpers';
 import { calculateShoulderAngle, normalizeHeading, calculateWrappedDelta } from '@/utils/shoulderTracking';
-import { isFistClenched, calculateHandBoundingBox } from '@/utils/fistDetection';
+import { recognizeGesture, calculateHandBoundingBox, getGestureEmoji } from '@/utils/gestureDetection';
 import {
   DETECTION_INTERVAL_MS,
   LOG_INTERVAL_FRAMES,
@@ -34,6 +34,9 @@ export const useDetectionLoop = ({
 }: UseDetectionLoopProps) => {
   const dispatch = useDispatch();
   
+  // FPS calculation state - MUST be called before any conditional logic
+  const [detectionFps, setDetectionFps] = useState<number>(0);
+  
   const detectionResultRef = useRef<HumanResult | null>(null);
   const isDetectingRef = useRef(false);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -51,8 +54,10 @@ export const useDetectionLoop = ({
   // Track if tracking is enabled at the time of detection start
   const trackingEnabledAtStartRef = useRef(isTrackingEnabled);
 
-  // FPS calculation state
-  const [detectionFps, setDetectionFps] = useState<number>(0);
+  // Track previous gesture states for change detection
+  const prevLeftGestureRef = useRef<HandGesture>(HandGesture.Relaxed);
+  const prevRightGestureRef = useRef<HandGesture>(HandGesture.Relaxed);
+
   const lastDetectionTimeRef = useRef<number>(performance.now());
   const detectionFrameTimesRef = useRef<number[]>([]);
   const FPS_SAMPLE_SIZE = 10;
@@ -114,12 +119,14 @@ export const useDetectionLoop = ({
         const leftHandData: HandDetectionData = {
           detected: false,
           boundingBox: null,
+          gesture: HandGesture.Relaxed,
           isFist: false,
         };
         
         const rightHandData: HandDetectionData = {
           detected: false,
           boundingBox: null,
+          gesture: HandGesture.Relaxed,
           isFist: false,
         };
 
@@ -139,10 +146,39 @@ export const useDetectionLoop = ({
               // Calculate bounding box
               handData.boundingBox = calculateHandBoundingBox(hand.keypoints, 15);
               
-              // Check if fist is clenched
-              handData.isFist = isFistClenched(hand.keypoints);
+              // Recognize gesture
+              handData.gesture = recognizeGesture(hand.keypoints);
+              
+              // Set explicit fist flag for backward compatibility
+              handData.isFist = handData.gesture === HandGesture.Fist;
             }
           });
+        }
+
+        // Log gesture changes
+        if (leftHandData.detected && leftHandData.gesture !== prevLeftGestureRef.current) {
+          console.log(
+            `[Gesture] Left hand: ${getGestureEmoji(prevLeftGestureRef.current)} ${prevLeftGestureRef.current} → ${getGestureEmoji(leftHandData.gesture)} ${leftHandData.gesture}`
+          );
+          prevLeftGestureRef.current = leftHandData.gesture;
+        }
+
+        if (rightHandData.detected && rightHandData.gesture !== prevRightGestureRef.current) {
+          console.log(
+            `[Gesture] Right hand: ${getGestureEmoji(prevRightGestureRef.current)} ${prevRightGestureRef.current} → ${getGestureEmoji(rightHandData.gesture)} ${rightHandData.gesture}`
+          );
+          prevRightGestureRef.current = rightHandData.gesture;
+        }
+
+        // Reset gesture state when hand is no longer detected
+        if (!leftHandData.detected && prevLeftGestureRef.current !== HandGesture.Relaxed) {
+          console.log(`[Gesture] Left hand: ${getGestureEmoji(prevLeftGestureRef.current)} ${prevLeftGestureRef.current} → ❌ not detected`);
+          prevLeftGestureRef.current = HandGesture.Relaxed;
+        }
+
+        if (!rightHandData.detected && prevRightGestureRef.current !== HandGesture.Relaxed) {
+          console.log(`[Gesture] Right hand: ${getGestureEmoji(prevRightGestureRef.current)} ${prevRightGestureRef.current} → ❌ not detected`);
+          prevRightGestureRef.current = HandGesture.Relaxed;
         }
 
         // Create enhanced result with hand detection data
@@ -219,11 +255,15 @@ export const useDetectionLoop = ({
         if (detectionCountRef.current % LOG_INTERVAL_FRAMES === 0) {
           console.log('[Detection] Frame:', detectionCountRef.current, 'FPS:', fps.toFixed(1));
           
-          // Log fist detection status
+          // Log current gesture status with bounding box info
           if (leftHandData.detected || rightHandData.detected) {
-            console.log('[Fist Detection]', {
-              left: leftHandData.detected ? (leftHandData.isFist ? '👊 FIST' : '✋ OPEN') : '❌',
-              right: rightHandData.detected ? (rightHandData.isFist ? '👊 FIST' : '✋ OPEN') : '❌',
+            console.log('[Gesture Status]', {
+              left: leftHandData.detected 
+                ? `${getGestureEmoji(leftHandData.gesture)} ${leftHandData.gesture} ${leftHandData.isFist ? '(FIST - bbox: ' + JSON.stringify(leftHandData.boundingBox) + ')' : ''}` 
+                : '❌',
+              right: rightHandData.detected 
+                ? `${getGestureEmoji(rightHandData.gesture)} ${rightHandData.gesture} ${rightHandData.isFist ? '(FIST - bbox: ' + JSON.stringify(rightHandData.boundingBox) + ')' : ''}` 
+                : '❌',
             });
           }
         }
@@ -259,6 +299,8 @@ export const useDetectionLoop = ({
       body: null,
       hand: null,
     };
+    prevLeftGestureRef.current = HandGesture.Relaxed;
+    prevRightGestureRef.current = HandGesture.Relaxed;
     setDetectionFps(0);
     detectionFrameTimesRef.current = [];
     detectionCountRef.current = 0;
