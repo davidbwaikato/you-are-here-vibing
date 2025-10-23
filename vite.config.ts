@@ -16,7 +16,8 @@ export default defineConfig({
   server: {
     headers: {
       'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Opener-Policy': 'same-origin',      
     },
+    allowedHosts: ['yah.so-we-must-think.space']    
   },
 });
