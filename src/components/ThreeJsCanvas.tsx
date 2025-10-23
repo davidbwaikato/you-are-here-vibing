@@ -48,6 +48,9 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
   // Track previous position to detect teleports
   const previousPositionRef = useRef<{ lat: number; lng: number } | null>(null);
 
+  // Track if initial markers have been created
+  const initialMarkersCreatedRef = useRef<boolean>(false);
+
   // Get Street View position, POV, zoom, loaded state, and selected marker from Redux store
   const { position, pov, zoom, isLoaded: isStreetViewLoaded, selectedMarkerIndex, isFistTrackingActive } = useSelector((state: RootState) => state.streetView);
 
@@ -208,6 +211,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       cameraRef.current = null;
       rendererRef.current = null;
       routeArrowsRef.current = [];
+      initialMarkersCreatedRef.current = false;
     };
   }, [isReady]);
 
@@ -409,16 +413,59 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       console.log('[ThreeJS] ✅ Selected marker reset to index 0 (closest)');
 
       previousPositionRef.current = position;
+      
+      // Reset initial markers flag when position changes (e.g., teleport)
+      initialMarkersCreatedRef.current = false;
     }
   }, [position, dispatch]);
+
+  /**
+   * Helper function to compare two marker arrays for equality
+   * Returns true if markers are identical (same positions and headings in same order)
+   */
+  const areMarkersEqual = (
+    markers1: Array<{ lat: number; lng: number; heading: number }>,
+    markers2: Array<{ lat: number; lng: number; heading: number }>
+  ): boolean => {
+    if (markers1.length !== markers2.length) {
+      return false;
+    }
+
+    for (let i = 0; i < markers1.length; i++) {
+      const m1 = markers1[i];
+      const m2 = markers2[i];
+      
+      // Compare with small epsilon for floating point precision
+      const EPSILON = 0.000001;
+      
+      if (
+        Math.abs(m1.lat - m2.lat) > EPSILON ||
+        Math.abs(m1.lng - m2.lng) > EPSILON ||
+        Math.abs(m1.heading - m2.heading) > EPSILON
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  };
 
   // Create/update 3D route arrows when Street View position changes OR selected marker changes
   useEffect(() => {
     if (!sceneRef.current || !isStreetViewLoaded || !hasRoute) {
+      console.log('[ThreeJS] ⏸️ Skipping marker update - conditions not met:', {
+        hasScene: !!sceneRef.current,
+        isStreetViewLoaded,
+        hasRoute,
+      });
       return;
     }
 
-    console.log('[ThreeJS] 🏹 Creating 3D directional arrows...');
+    console.log('[ThreeJS] 🔍 Recalculating visible 3D markers...', {
+      isInitialLoad: !initialMarkersCreatedRef.current,
+      currentPosition: position,
+      currentHeading: pov.heading,
+    });
 
     const interpolatedRoute = interpolatePolyline(routePolyline, MAX_INTERPOLATION_SPACING);
 
@@ -437,7 +484,8 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       interpolatedRoute.points[marker.originalRouteIndex]
     );
 
-    const markersWithHeading: Array<{ lat: number; lng: number; heading: number }> = [];
+    // Calculate new markers with heading
+    const newMarkersWithHeading: Array<{ lat: number; lng: number; heading: number }> = [];
     for (let i = 0; i < visiblePoints.length - 1; i++) {
       const currentPoint = visiblePoints[i];
       const nextPoint = visiblePoints[i + 1];
@@ -447,22 +495,61 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         new google.maps.LatLng(nextPoint.lat, nextPoint.lng)
       );
       
-      markersWithHeading.push({
+      newMarkersWithHeading.push({
         lat: currentPoint.lat,
         lng: currentPoint.lng,
         heading: heading,
       });
     }
+
+    // OPTIMIZATION: Compare new markers with existing markers
+    // BUT: Always create markers on initial load (when initialMarkersCreatedRef is false)
+    const markersChanged = !areMarkersEqual(newMarkersWithHeading, visibleMarkersRef.current);
+    const isInitialLoad = !initialMarkersCreatedRef.current;
+
+    if (!markersChanged && !isInitialLoad) {
+      console.log('[ThreeJS] ✅ Visible markers UNCHANGED - skipping route arrow regeneration', {
+        markerCount: newMarkersWithHeading.length,
+        selectedIndex: selectedMarkerIndex,
+        optimization: 'SKIPPED arrow regeneration to prevent animation interruption',
+      });
+      
+      // Early return - no need to regenerate arrows
+      return;
+    }
+
+    if (isInitialLoad) {
+      console.log('[ThreeJS] 🎬 INITIAL LOAD - Creating markers for first time', {
+        markerCount: newMarkersWithHeading.length,
+        position,
+        heading: pov.heading,
+      });
+    } else {
+      console.log('[ThreeJS] 🔄 Visible markers CHANGED - regenerating route arrows', {
+        previousCount: visibleMarkersRef.current.length,
+        newCount: newMarkersWithHeading.length,
+        selectedIndex: selectedMarkerIndex,
+        reason: 'Marker set differs from previous',
+      });
+    }
+
+    // Update visibleMarkersRef with new markers
+    visibleMarkersRef.current = newMarkersWithHeading;
     
-    visibleMarkersRef.current = markersWithHeading;
+    // Mark that initial markers have been created
+    if (isInitialLoad) {
+      initialMarkersCreatedRef.current = true;
+      console.log('[ThreeJS] ✅ Initial markers created flag set to true');
+    }
     
-    console.log('[ThreeJS] 📊 Visible markers data:', {
-      count: markersWithHeading.length,
-      firstMarker: markersWithHeading[0],
+    console.log('[ThreeJS] 📊 Updated visible markers data:', {
+      count: newMarkersWithHeading.length,
+      firstMarker: newMarkersWithHeading[0],
       selectedIndex: selectedMarkerIndex,
-      selectedMarker: markersWithHeading[selectedMarkerIndex],
+      selectedMarker: newMarkersWithHeading[selectedMarkerIndex],
       closestMarkerDistance: visibilityResult.visibleMarkers[0]?.distance,
       isFistTrackingActive,
+      isInitialLoad,
     });
 
     if (visiblePoints.length < 2) {
@@ -639,6 +726,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       totalCount: newArrows.length,
       selectedIndex: clampedSelectedIndex,
       scheduledAnimations: newArrows.filter(a => a.scaleTimeoutId !== undefined).length,
+      isInitialLoad,
       selectedMarkerVisuals: {
         color: 'RED (IMMEDIATE - 0ms)',
         targetScale: '2.0x (DELAYED - 500ms)',
