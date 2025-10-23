@@ -5,6 +5,12 @@ interface LatLng {
   lng: number;
 }
 
+interface LocationDetails {
+  description: string;
+  name: string;
+  types: string[];
+}
+
 interface StreetViewState {
   position: {
     lat: number;
@@ -27,6 +33,8 @@ interface StreetViewState {
   } | null;
   sourceAddress: string | null;
   destinationAddress: string | null;
+  sourceDetails: LocationDetails | null;
+  destinationDetails: LocationDetails | null;
   routePolyline: LatLng[];
   selectedMarkerIndex: number;
   isFistTrackingActive: boolean;
@@ -48,6 +56,8 @@ const initialState: StreetViewState = {
   destinationLocation: null,
   sourceAddress: null,
   destinationAddress: null,
+  sourceDetails: null,
+  destinationDetails: null,
   routePolyline: [],
   selectedMarkerIndex: 0,
   isFistTrackingActive: false,
@@ -102,6 +112,16 @@ const streetViewSlice = createSlice({
       state.destinationAddress = action.payload;
       console.log('[Redux Reducer] New destinationAddress state:', state.destinationAddress);
     },
+    setSourceDetails: (state, action: PayloadAction<LocationDetails | null>) => {
+      console.log('[Redux Reducer] setSourceDetails called with:', action.payload);
+      state.sourceDetails = action.payload;
+      console.log('[Redux Reducer] New sourceDetails state:', state.sourceDetails);
+    },
+    setDestinationDetails: (state, action: PayloadAction<LocationDetails | null>) => {
+      console.log('[Redux Reducer] setDestinationDetails called with:', action.payload);
+      state.destinationDetails = action.payload;
+      console.log('[Redux Reducer] New destinationDetails state:', state.destinationDetails);
+    },
     setRoutePolyline: (state, action: PayloadAction<LatLng[]>) => {
       console.log('[Redux Reducer] setRoutePolyline called with:', {
         pointCount: action.payload.length,
@@ -130,6 +150,8 @@ const streetViewSlice = createSlice({
       state.destinationLocation = null;
       state.sourceAddress = null;
       state.destinationAddress = null;
+      state.sourceDetails = null;
+      state.destinationDetails = null;
       state.selectedMarkerIndex = 0;
       state.isFistTrackingActive = false;
       console.log('[Redux Reducer] Route cleared:', {
@@ -138,6 +160,8 @@ const streetViewSlice = createSlice({
         destinationLocation: state.destinationLocation,
         sourceAddress: state.sourceAddress,
         destinationAddress: state.destinationAddress,
+        sourceDetails: state.sourceDetails,
+        destinationDetails: state.destinationDetails,
         selectedMarkerIndex: state.selectedMarkerIndex,
         isFistTrackingActive: state.isFistTrackingActive,
       });
@@ -155,6 +179,8 @@ export const {
   setDestinationLocation,
   setSourceAddress,
   setDestinationAddress,
+  setSourceDetails,
+  setDestinationDetails,
   setRoutePolyline,
   setSelectedMarkerIndex,
   setFistTrackingActive,

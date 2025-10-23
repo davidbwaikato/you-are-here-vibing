@@ -3,7 +3,8 @@ import { useDispatch } from 'react-redux';
 import { parseLocationParams } from '../utils/urlParams';
 import { geocodeLocation, type LatLng } from '../services/geocoding';
 import { fetchWalkingRoute, type RouteResult } from '../services/routing';
-import { setPosition, setSourceLocation, setDestinationLocation, setSourceAddress, setDestinationAddress, setRoutePolyline } from '../store/streetViewSlice';
+import { fetchPlaceDetails } from '../services/places';
+import { setPosition, setSourceLocation, setDestinationLocation, setSourceAddress, setDestinationAddress, setSourceDetails, setDestinationDetails, setRoutePolyline } from '../store/streetViewSlice';
 
 interface LocationState {
   isInitializing: boolean;
@@ -28,7 +29,7 @@ const DEFAULT_DESTINATION_LOCATION: LatLng = {
 };
 
 /**
- * Hook to handle URL parameter parsing, geocoding, and route calculation
+ * Hook to handle URL parameter parsing, geocoding, place details fetching, and route calculation
  */
 export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
   const dispatch = useDispatch();
@@ -74,6 +75,30 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
       if (!params.src && !params.dst) {
         console.log('[useLocationParams] 📌 No URL params, using default locations');
         
+        // Fetch place details for default locations
+        console.log('[useLocationParams] 🏛️ Fetching place details for default locations...');
+        const [sourceDetailsResult, destinationDetailsResult] = await Promise.all([
+          fetchPlaceDetails(DEFAULT_SOURCE_LOCATION),
+          fetchPlaceDetails(DEFAULT_DESTINATION_LOCATION),
+        ]);
+
+        // Update Redux with place details
+        if ('details' in sourceDetailsResult) {
+          console.log('[useLocationParams] ✅ Source place details retrieved:', sourceDetailsResult.details);
+          dispatch(setSourceDetails(sourceDetailsResult.details));
+        } else {
+          console.warn('[useLocationParams] ⚠️ Failed to fetch source place details:', sourceDetailsResult.error);
+          dispatch(setSourceDetails(null));
+        }
+
+        if ('details' in destinationDetailsResult) {
+          console.log('[useLocationParams] ✅ Destination place details retrieved:', destinationDetailsResult.details);
+          dispatch(setDestinationDetails(destinationDetailsResult.details));
+        } else {
+          console.warn('[useLocationParams] ⚠️ Failed to fetch destination place details:', destinationDetailsResult.error);
+          dispatch(setDestinationDetails(null));
+        }
+        
         // Calculate route with default locations
         console.log('[useLocationParams] 🚶 Calculating default route...');
         const routeResult = await fetchWalkingRoute(
@@ -104,7 +129,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         if (!('error' in routeResult)) {
           dispatch(setRoutePolyline(routeResult.decodedPolyline));
         }
-        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations and route');
+        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations, place details, and route');
         console.log('[useLocationParams] ✅ Initialization complete');
         return;
       }
@@ -176,6 +201,17 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
             dispatch(setSourceLocation(srcResult.location));
             dispatch(setSourceAddress(srcResult.formattedAddress));
             console.log('[useLocationParams] ✅ Redux updated with source location');
+
+            // Fetch place details for source location
+            console.log('[useLocationParams] 🏛️ Fetching place details for source location...');
+            const sourceDetailsResult = await fetchPlaceDetails(srcResult.location);
+            if ('details' in sourceDetailsResult) {
+              console.log('[useLocationParams] ✅ Source place details retrieved:', sourceDetailsResult.details);
+              dispatch(setSourceDetails(sourceDetailsResult.details));
+            } else {
+              console.warn('[useLocationParams] ⚠️ Failed to fetch source place details:', sourceDetailsResult.error);
+              dispatch(setSourceDetails(null));
+            }
           }
         }
 
@@ -193,6 +229,17 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
             dispatch(setDestinationLocation(dstResult.location));
             dispatch(setDestinationAddress(dstResult.formattedAddress));
             console.log('[useLocationParams] ✅ Redux updated with destination location');
+
+            // Fetch place details for destination location
+            console.log('[useLocationParams] 🏛️ Fetching place details for destination location...');
+            const destinationDetailsResult = await fetchPlaceDetails(dstResult.location);
+            if ('details' in destinationDetailsResult) {
+              console.log('[useLocationParams] ✅ Destination place details retrieved:', destinationDetailsResult.details);
+              dispatch(setDestinationDetails(destinationDetailsResult.details));
+            } else {
+              console.warn('[useLocationParams] ⚠️ Failed to fetch destination place details:', destinationDetailsResult.error);
+              dispatch(setDestinationDetails(null));
+            }
           }
         }
 
@@ -215,7 +262,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           }
         }
 
-        console.log('[useLocationParams] ✅ All initialization complete, ready to show main app');
+        console.log('[useLocationParams] ✅ All initialization complete (including place details), ready to show main app');
         setState(newState);
       } catch (error) {
         console.error('[useLocationParams] ❌ Initialization error:', error);
@@ -237,10 +284,12 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           dispatch(setSourceAddress(errorState.sourceAddress));
           dispatch(setSourceLocation(DEFAULT_SOURCE_LOCATION));
           dispatch(setPosition(DEFAULT_SOURCE_LOCATION));
+          dispatch(setSourceDetails(null));
         }
         if (!params.dst) {
           dispatch(setDestinationAddress(errorState.destinationAddress));
           dispatch(setDestinationLocation(DEFAULT_DESTINATION_LOCATION));
+          dispatch(setDestinationDetails(null));
         }
         console.log('[useLocationParams] ✅ Error handled, ready to show main app');
       }
