@@ -17,7 +17,7 @@ export const App = () => {
   // Initialize location parameters and route
   const locationState = useLocationParams(isGoogleMapsLoaded);
 
-  // Initialize proximity-based audio playback
+  // Initialize proximity-based and keyboard-based audio playback
   const audioState = useProximityAudio();
 
   // Check if Google Maps API is loaded
@@ -78,22 +78,49 @@ export const App = () => {
       {/* Control Panel */}
       <ControlPanel />
 
-      {/* Audio Status Indicator (for debugging) */}
+      {/* Audio Status Indicator */}
       {audioState.isAudioReady && (
-        <div className="fixed bottom-4 left-4 bg-black/70 text-white px-4 py-2 rounded-lg text-sm font-mono z-50">
-          <div className="flex items-center gap-2">
+        <div className="fixed bottom-4 left-4 bg-black/80 text-white px-4 py-3 rounded-lg text-sm font-mono z-50 backdrop-blur-sm border border-white/10">
+          {/* Playback Status */}
+          <div className="flex items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${
               audioState.currentlyPlaying ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
             }`} />
-            <span>
+            <span className="font-semibold">
               {audioState.currentlyPlaying 
                 ? `Playing: ${audioState.currentlyPlaying}` 
                 : 'No audio playing'}
             </span>
+            {audioState.keyboardControlActive && (
+              <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded">
+                ⌨️ Keyboard
+              </span>
+            )}
           </div>
-          <div className="text-xs text-gray-400 mt-1">
-            Source: {audioState.isInsideSource ? '✓ Inside' : '✗ Outside'} | 
-            Destination: {audioState.isInsideDestination ? '✓ Inside' : '✗ Outside'}
+
+          {/* Proximity Status */}
+          <div className="text-xs text-gray-400 mb-2">
+            <div className="flex items-center gap-2">
+              <span className={audioState.isInsideSource ? 'text-green-400' : 'text-gray-500'}>
+                Source: {audioState.isInsideSource ? '✓ Inside' : '✗ Outside'}
+              </span>
+              <span className="text-gray-600">|</span>
+              <span className={audioState.isInsideDestination ? 'text-green-400' : 'text-gray-500'}>
+                Destination: {audioState.isInsideDestination ? '✓ Inside' : '✗ Outside'}
+              </span>
+            </div>
+          </div>
+
+          {/* Keyboard Controls Help */}
+          <div className="text-xs text-gray-500 border-t border-white/10 pt-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white font-semibold">S</kbd>
+              <span>Toggle Source Audio</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white font-semibold">D</kbd>
+              <span>Toggle Destination Audio</span>
+            </div>
           </div>
         </div>
       )}

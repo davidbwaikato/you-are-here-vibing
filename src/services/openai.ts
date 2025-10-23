@@ -104,6 +104,21 @@ Write in second person ("you") to make it immersive, as if speaking directly to 
       preview: enhancedDescription.substring(0, 100) + '...',
     });
 
+    // ✨ LOG THE OPENAI ENHANCED DESCRIPTION
+    console.log('[OpenAI API] 🎨 ===== OPENAI ENHANCED DESCRIPTION =====');
+    console.log('[OpenAI API] 📍 Location:', placeName);
+    console.log('[OpenAI API] 🤖 Model:', 'gpt-4o-mini');
+    console.log('[OpenAI API] 📊 Stats:', {
+      characterCount: enhancedDescription.length,
+      wordCount: enhancedDescription.split(/\s+/).length,
+      paragraphCount: enhancedDescription.split(/\n\n/).length,
+    });
+    console.log('[OpenAI API] 📝 Enhanced Description:');
+    console.log('─'.repeat(60));
+    console.log(enhancedDescription);
+    console.log('─'.repeat(60));
+    console.log('[OpenAI API] 🎨 ==========================================');
+
     return { enhancedDescription };
   } catch (error) {
     console.error('[OpenAI API] ❌ Error generating enhanced description:', error);

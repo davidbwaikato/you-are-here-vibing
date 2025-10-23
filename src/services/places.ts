@@ -94,6 +94,18 @@ export const fetchPlaceDetails = async (
       description = closestPlace.displayName || 'Location details not available';
     }
 
+    // ✨ LOG THE GOOGLE PLACES API TEXT DESCRIPTION
+    console.log('[Places API] 📝 ===== GOOGLE PLACES API DESCRIPTION =====');
+    console.log('[Places API] 📍 Location:', closestPlace.displayName);
+    console.log('[Places API] 📄 Description Type:', 
+      closestPlace.editorialSummary ? 'Editorial Summary' : 
+      closestPlace.formattedAddress ? 'Formatted Address' : 
+      'Display Name'
+    );
+    console.log('[Places API] 📝 Text Description:');
+    console.log(description);
+    console.log('[Places API] 📝 ==========================================');
+
     const placeDetails: PlaceDetails = {
       description: description,
       name: closestPlace.displayName || 'Unknown Location',
