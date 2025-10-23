@@ -4,7 +4,7 @@ import { RootState } from '@/store/store';
 import { setPosition, setPov, setSelectedMarkerIndex } from '@/store/streetViewSlice';
 import { useRoutePolyline } from '@/hooks/useRoutePolyline';
 import { interpolatePolyline, getVisibleMarkers } from '@/utils/geoUtils';
-import { polylineTo3D } from '@/utils/coordinateConversion';
+import { polylineTo3D, latLngTo3D } from '@/utils/coordinateConversion';
 import { 
   MAX_INTERPOLATION_SPACING, 
   MIN_DISTANCE_MARKERS_FROM_USER, 
@@ -27,6 +27,15 @@ interface ArrowAnimationState {
   scaleTimeoutId?: number;
 }
 
+interface LocationCuboid {
+  mesh: THREE.Mesh;
+  material: THREE.MeshStandardMaterial;
+  type: 'source' | 'destination';
+}
+
+// Street View eye level is approximately 1.7 meters above ground
+const STREET_VIEW_EYE_LEVEL = 1.7;
+
 export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProps) => {
   const dispatch = useDispatch();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,6 +43,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const routeArrowsRef = useRef<ArrowAnimationState[]>([]);
+  const locationCuboidsRef = useRef<LocationCuboid[]>([]);
   const animationFrameRef = useRef<number | null>(null);
 
   // Mouse drag state
@@ -52,7 +62,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
   const initialMarkersCreatedRef = useRef<boolean>(false);
 
   // Get Street View position, POV, zoom, loaded state, and selected marker from Redux store
-  const { position, pov, zoom, isLoaded: isStreetViewLoaded, selectedMarkerIndex, isFistTrackingActive } = useSelector((state: RootState) => state.streetView);
+  const { position, pov, zoom, isLoaded: isStreetViewLoaded, selectedMarkerIndex, isFistTrackingActive, sourceLocation, destinationLocation } = useSelector((state: RootState) => state.streetView);
 
   // Get route polyline from Redux
   const { routePolyline, hasRoute } = useRoutePolyline();
@@ -203,6 +213,11 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         });
       });
 
+      locationCuboidsRef.current.forEach(cuboid => {
+        cuboid.mesh.geometry.dispose();
+        cuboid.material.dispose();
+      });
+
       if (rendererRef.current) {
         rendererRef.current.dispose();
       }
@@ -211,6 +226,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       cameraRef.current = null;
       rendererRef.current = null;
       routeArrowsRef.current = [];
+      locationCuboidsRef.current = [];
       initialMarkersCreatedRef.current = false;
     };
   }, [isReady]);
@@ -449,6 +465,129 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
 
     return true;
   };
+
+  // Create/update location cuboids when source/destination locations change
+  useEffect(() => {
+    if (!sceneRef.current || !isStreetViewLoaded) {
+      console.log('[ThreeJS] ⏸️ Skipping location cuboid update - conditions not met:', {
+        hasScene: !!sceneRef.current,
+        isStreetViewLoaded,
+      });
+      return;
+    }
+
+    console.log('[ThreeJS] 🟧 Updating location cuboids...', {
+      sourceLocation,
+      destinationLocation,
+      currentPosition: position,
+    });
+
+    // Clean up existing cuboids
+    if (locationCuboidsRef.current.length > 0) {
+      console.log('[ThreeJS] 🧹 Cleaning up existing location cuboids...');
+      locationCuboidsRef.current.forEach(cuboid => {
+        sceneRef.current?.remove(cuboid.mesh);
+        cuboid.mesh.geometry.dispose();
+        cuboid.material.dispose();
+      });
+      locationCuboidsRef.current = [];
+    }
+
+    const newCuboids: LocationCuboid[] = [];
+
+    // Create cuboid geometry (10x10x3 - width x depth x height)
+    const cuboidGeometry = new THREE.BoxGeometry(10, 3, 10);
+    
+    // Semi-translucent amber material
+    const createCuboidMaterial = () => new THREE.MeshStandardMaterial({
+      color: 0xffbf00, // Amber color
+      transparent: true,
+      opacity: 0.5,
+      metalness: 0.2,
+      roughness: 0.8,
+      depthWrite: false,
+    });
+
+    // Helper function to check if location is within catchment area
+    const isLocationInCatchment = (location: { lat: number; lng: number }): boolean => {
+      const point3D = latLngTo3D(location, position);
+      const distance = Math.sqrt(
+        point3D.x * point3D.x +
+        point3D.z * point3D.z
+      );
+      
+      // Within catchment area (no minimum distance exclusion for cuboids)
+      return distance <= MAX_DISTANCE_MARKERS_FROM_USER;
+    };
+
+    // Create source location cuboid
+    if (sourceLocation && isLocationInCatchment(sourceLocation)) {
+      console.log('[ThreeJS] 🟧 Creating SOURCE location cuboid:', sourceLocation);
+      
+      const point3D = latLngTo3D(sourceLocation, position);
+      const material = createCuboidMaterial();
+      const mesh = new THREE.Mesh(cuboidGeometry, material);
+      
+      // Position at ground level (compensate for Street View eye level)
+      // Street View eye level is at y=0, so ground is at y=-STREET_VIEW_EYE_LEVEL
+      // Cuboid height is 3, so center it at ground + half height
+      mesh.position.set(
+        point3D.x,
+        -STREET_VIEW_EYE_LEVEL + 1.5, // Ground level + half of cuboid height (3/2 = 1.5)
+        point3D.z
+      );
+      
+      sceneRef.current?.add(mesh);
+      newCuboids.push({ mesh, material, type: 'source' });
+      
+      console.log('[ThreeJS] ✅ Source cuboid created at:', {
+        position: mesh.position,
+        distance: Math.sqrt(point3D.x * point3D.x + point3D.z * point3D.z).toFixed(2) + 'm',
+      });
+    } else if (sourceLocation) {
+      console.log('[ThreeJS] ⏸️ Source location outside catchment area:', {
+        location: sourceLocation,
+        maxDistance: MAX_DISTANCE_MARKERS_FROM_USER,
+      });
+    }
+
+    // Create destination location cuboid
+    if (destinationLocation && isLocationInCatchment(destinationLocation)) {
+      console.log('[ThreeJS] 🟧 Creating DESTINATION location cuboid:', destinationLocation);
+      
+      const point3D = latLngTo3D(destinationLocation, position);
+      const material = createCuboidMaterial();
+      const mesh = new THREE.Mesh(cuboidGeometry, material);
+      
+      // Position at ground level (compensate for Street View eye level)
+      mesh.position.set(
+        point3D.x,
+        -STREET_VIEW_EYE_LEVEL + 1.5, // Ground level + half of cuboid height
+        point3D.z
+      );
+      
+      sceneRef.current?.add(mesh);
+      newCuboids.push({ mesh, material, type: 'destination' });
+      
+      console.log('[ThreeJS] ✅ Destination cuboid created at:', {
+        position: mesh.position,
+        distance: Math.sqrt(point3D.x * point3D.x + point3D.z * point3D.z).toFixed(2) + 'm',
+      });
+    } else if (destinationLocation) {
+      console.log('[ThreeJS] ⏸️ Destination location outside catchment area:', {
+        location: destinationLocation,
+        maxDistance: MAX_DISTANCE_MARKERS_FROM_USER,
+      });
+    }
+
+    locationCuboidsRef.current = newCuboids;
+    
+    console.log('[ThreeJS] ✅ Location cuboids update complete:', {
+      totalCuboids: newCuboids.length,
+      types: newCuboids.map(c => c.type),
+    });
+
+  }, [isStreetViewLoaded, position, sourceLocation, destinationLocation]);
 
   // Create/update 3D route arrows when Street View position changes OR selected marker changes
   useEffect(() => {

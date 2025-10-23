@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import { parseLocationParams } from '../utils/urlParams';
 import { geocodeLocation, type LatLng } from '../services/geocoding';
 import { fetchWalkingRoute, type RouteResult } from '../services/routing';
-import { setPosition, setDestinationLocation, setSourceAddress, setDestinationAddress, setRoutePolyline } from '../store/streetViewSlice';
+import { setPosition, setSourceLocation, setDestinationLocation, setSourceAddress, setDestinationAddress, setRoutePolyline } from '../store/streetViewSlice';
 
 interface LocationState {
   isInitializing: boolean;
@@ -95,13 +95,16 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         };
         setState(defaultState);
         
-        // Update Redux store with default addresses
+        // Update Redux store with default addresses and locations
         dispatch(setSourceAddress(defaultState.sourceAddress));
+        dispatch(setSourceLocation(DEFAULT_SOURCE_LOCATION));
         dispatch(setDestinationAddress(defaultState.destinationAddress));
         dispatch(setPosition(DEFAULT_SOURCE_LOCATION));
         dispatch(setDestinationLocation(DEFAULT_DESTINATION_LOCATION));
-				dispatch(setRoutePolyline(routeResult.decodedPolyline));
-        console.log('[useLocationParams] ✅ Redux store updated with default addresses and route');
+        if (!('error' in routeResult)) {
+          dispatch(setRoutePolyline(routeResult.decodedPolyline));
+        }
+        console.log('[useLocationParams] ✅ Redux store updated with default addresses, locations and route');
         console.log('[useLocationParams] ✅ Initialization complete');
         return;
       }
@@ -170,6 +173,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
             
             // Update Redux store with source location and address
             dispatch(setPosition(srcResult.location));
+            dispatch(setSourceLocation(srcResult.location));
             dispatch(setSourceAddress(srcResult.formattedAddress));
             console.log('[useLocationParams] ✅ Redux updated with source location');
           }
@@ -207,9 +211,8 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           } else {
             console.log('[useLocationParams] ✅ Route calculated successfully');
             newState.route = routeResult;
-						dispatch(setRoutePolyline(routeResult.decodedPolyline));
+            dispatch(setRoutePolyline(routeResult.decodedPolyline));
           }
-					
         }
 
         console.log('[useLocationParams] ✅ All initialization complete, ready to show main app');
@@ -229,9 +232,10 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         };
         setState(errorState);
         
-        // Update Redux store with default addresses on error
+        // Update Redux store with default addresses and locations on error
         if (!params.src) {
           dispatch(setSourceAddress(errorState.sourceAddress));
+          dispatch(setSourceLocation(DEFAULT_SOURCE_LOCATION));
           dispatch(setPosition(DEFAULT_SOURCE_LOCATION));
         }
         if (!params.dst) {

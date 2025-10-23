@@ -17,6 +17,10 @@ interface StreetViewState {
   zoom: number;
   isLoaded: boolean;
   isVideoOverlayEnabled: boolean;
+  sourceLocation: {
+    lat: number;
+    lng: number;
+  } | null;
   destinationLocation: {
     lat: number;
     lng: number;
@@ -40,6 +44,7 @@ const initialState: StreetViewState = {
   zoom: 1,
   isLoaded: false,
   isVideoOverlayEnabled: true,
+  sourceLocation: null,
   destinationLocation: null,
   sourceAddress: null,
   destinationAddress: null,
@@ -76,6 +81,11 @@ const streetViewSlice = createSlice({
       console.log('[Redux Reducer] setVideoOverlayEnabled called with:', action.payload);
       state.isVideoOverlayEnabled = action.payload;
       console.log('[Redux Reducer] New isVideoOverlayEnabled state:', state.isVideoOverlayEnabled);
+    },
+    setSourceLocation: (state, action: PayloadAction<{ lat: number; lng: number } | null>) => {
+      console.log('[Redux Reducer] setSourceLocation called with:', action.payload);
+      state.sourceLocation = action.payload;
+      console.log('[Redux Reducer] New sourceLocation state:', state.sourceLocation);
     },
     setDestinationLocation: (state, action: PayloadAction<{ lat: number; lng: number } | null>) => {
       console.log('[Redux Reducer] setDestinationLocation called with:', action.payload);
@@ -116,13 +126,17 @@ const streetViewSlice = createSlice({
     clearRoute: (state) => {
       console.log('[Redux Reducer] clearRoute called');
       state.routePolyline = [];
+      state.sourceLocation = null;
       state.destinationLocation = null;
+      state.sourceAddress = null;
       state.destinationAddress = null;
       state.selectedMarkerIndex = 0;
       state.isFistTrackingActive = false;
       console.log('[Redux Reducer] Route cleared:', {
         routePolyline: state.routePolyline.length,
+        sourceLocation: state.sourceLocation,
         destinationLocation: state.destinationLocation,
+        sourceAddress: state.sourceAddress,
         destinationAddress: state.destinationAddress,
         selectedMarkerIndex: state.selectedMarkerIndex,
         isFistTrackingActive: state.isFistTrackingActive,
@@ -137,6 +151,7 @@ export const {
   setZoom, 
   setLoaded, 
   setVideoOverlayEnabled,
+  setSourceLocation,
   setDestinationLocation,
   setSourceAddress,
   setDestinationAddress,
