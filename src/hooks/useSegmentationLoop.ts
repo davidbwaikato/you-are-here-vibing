@@ -157,11 +157,9 @@ export const useSegmentationLoop = ({
         console.error('[Segmentation] Error:', error);
       } finally {
         // CRITICAL: Dispose tensor to prevent GPU memory leak
-        if (segmentationTensor && typeof segmentationTensor.dispose === 'function') {
-          segmentationTensor.dispose();
-          if (DEBUG_SEGMENTATION) {
-            console.log('[Segmentation] Tensor disposed');
-          }
+        segmentationTensor.dispose();
+        if (DEBUG_SEGMENTATION) {
+          console.log('[Segmentation] Tensor disposed');
         }
         isSegmentingRef.current = false;
       }
