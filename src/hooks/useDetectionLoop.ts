@@ -63,6 +63,11 @@ export const useDetectionLoop = ({
   const FPS_SAMPLE_SIZE = 10;
   const detectionCountRef = useRef(0);
 
+  // Throttle state for setPov dispatches
+  const lastPovDispatchRef = useRef<number>(0);
+  const povDispatchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const POV_DISPATCH_THROTTLE_MS = 50; // Max 20 POV updates per second
+
   // Clear canvas when tracking is disabled
   useEffect(() => {
     if (!isTrackingEnabled && canvasElement) {
@@ -79,6 +84,12 @@ export const useDetectionLoop = ({
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
       detectionIntervalRef.current = null;
+    }
+
+    // Clear any pending POV dispatch
+    if (povDispatchTimeoutRef.current) {
+      clearTimeout(povDispatchTimeoutRef.current);
+      povDispatchTimeoutRef.current = null;
     }
 
     if (!isInitialized || !isCameraActive || !isTrackingEnabled) {
@@ -215,7 +226,7 @@ export const useDetectionLoop = ({
         
         detectionResultRef.current = result;
         
-        // Calculate shoulder swivel and update Street View heading
+        // Calculate shoulder swivel and update Street View heading WITH THROTTLING
         if (result?.body?.[0]?.keypoints) {
           const currentAngle = calculateShoulderAngle(result.body[0].keypoints);
           
@@ -236,12 +247,45 @@ export const useDetectionLoop = ({
             const wrappedDelta = calculateWrappedDelta(normalizedHeading, lastDispatchedHeadingRef.current);
             
             if (wrappedDelta >= HYSTERESIS_HEADING_ANGLE_THRESHOLD) {
-              dispatch(setPov({
-                heading: normalizedHeading,
-                pitch: INITIAL_PITCH,
-              }));
-              
-              lastDispatchedHeadingRef.current = normalizedHeading;
+              // THROTTLE POV DISPATCH
+              const now = Date.now();
+              const timeSinceLastDispatch = now - lastPovDispatchRef.current;
+
+              if (timeSinceLastDispatch < POV_DISPATCH_THROTTLE_MS) {
+                // Throttle: Schedule dispatch for later
+                if (povDispatchTimeoutRef.current) {
+                  clearTimeout(povDispatchTimeoutRef.current);
+                }
+
+                povDispatchTimeoutRef.current = setTimeout(() => {
+                  console.log('[Detection] 🔄 Dispatching throttled setPov:', {
+                    heading: normalizedHeading,
+                    pitch: INITIAL_PITCH,
+                  });
+                  
+                  dispatch(setPov({
+                    heading: normalizedHeading,
+                    pitch: INITIAL_PITCH,
+                  }));
+                  
+                  lastDispatchedHeadingRef.current = normalizedHeading;
+                  lastPovDispatchRef.current = Date.now();
+                }, POV_DISPATCH_THROTTLE_MS - timeSinceLastDispatch);
+              } else {
+                // Not throttled: Dispatch immediately
+                console.log('[Detection] 🔄 Dispatching immediate setPov:', {
+                  heading: normalizedHeading,
+                  pitch: INITIAL_PITCH,
+                });
+                
+                dispatch(setPov({
+                  heading: normalizedHeading,
+                  pitch: INITIAL_PITCH,
+                }));
+                
+                lastDispatchedHeadingRef.current = normalizedHeading;
+                lastPovDispatchRef.current = now;
+              }
             }
           } else {
             onShoulderAngleChange(null);
@@ -283,6 +327,12 @@ export const useDetectionLoop = ({
         detectionIntervalRef.current = null;
         console.log('[Detection] Loop cleanup complete');
       }
+      
+      if (povDispatchTimeoutRef.current) {
+        clearTimeout(povDispatchTimeoutRef.current);
+        povDispatchTimeoutRef.current = null;
+        console.log('[Detection] POV dispatch timeout cleared');
+      }
     };
   }, [isInitialized, isCameraActive, isTrackingEnabled, videoElement, detect, dispatch, onShoulderAngleChange]);
 
@@ -304,6 +354,12 @@ export const useDetectionLoop = ({
     setDetectionFps(0);
     detectionFrameTimesRef.current = [];
     detectionCountRef.current = 0;
+    
+    // Clear any pending POV dispatch
+    if (povDispatchTimeoutRef.current) {
+      clearTimeout(povDispatchTimeoutRef.current);
+      povDispatchTimeoutRef.current = null;
+    }
   };
 
   return {

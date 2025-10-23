@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { setPosition, setPov, setZoom, setLoaded } from '@/store/streetViewSlice';
@@ -11,9 +11,23 @@ export const StreetView = ({ isReady }: StreetViewProps) => {
   const dispatch = useDispatch();
   const panoramaRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
   
   const { position, pov, zoom } = useSelector((state: RootState) => state.streetView);
+
+  // Throttle state for position updates
+  const lastPositionUpdateRef = useRef<number>(0);
+  const positionUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const POSITION_UPDATE_THROTTLE_MS = 100; // Throttle position updates to max 10 per second
+
+  // Throttle state for POV updates
+  const lastPovUpdateRef = useRef<number>(0);
+  const povUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const POV_UPDATE_THROTTLE_MS = 50; // Throttle POV updates to max 20 per second
+
+  // Throttle state for zoom updates
+  const lastZoomUpdateRef = useRef<number>(0);
+  const zoomUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const ZOOM_UPDATE_THROTTLE_MS = 100; // Throttle zoom updates to max 10 per second
 
   useEffect(() => {
     if (!isReady || !containerRef.current || !window.google) {
@@ -22,11 +36,6 @@ export const StreetView = ({ isReady }: StreetViewProps) => {
         hasContainer: !!containerRef.current,
         hasGoogle: !!window.google 
       });
-      return;
-    }
-
-    if (isInitialized) {
-      console.log('[StreetView] Already initialized, skipping...');
       return;
     }
 
@@ -50,68 +59,126 @@ export const StreetView = ({ isReady }: StreetViewProps) => {
     );
 
     panoramaRef.current = panorama;
-    setIsInitialized(true);
     console.log('[StreetView] ✅ Panorama created');
 
-    // Listen for panorama status changes
-    panorama.addListener('status_changed', () => {
-      const status = panorama.getStatus();
-      console.log('[StreetView] 📊 Status changed:', status);
-      
-      if (status === 'OK') {
-        console.log('[StreetView] ✅ Panorama loaded successfully');
-        dispatch(setLoaded(true));
-      } else if (status === 'ZERO_RESULTS') {
-        console.error('[StreetView] ❌ No Street View available at this location');
-        dispatch(setLoaded(false));
-      } else if (status === 'UNKNOWN_ERROR') {
-        console.error('[StreetView] ❌ Unknown error loading Street View');
-        dispatch(setLoaded(false));
-      }
-    });
-
-    // Listen for position changes
+    // Listen for position changes with throttling
     panorama.addListener('position_changed', () => {
-      const newPosition = panorama.getPosition();
-      if (newPosition) {
-        const lat = newPosition.lat();
-        const lng = newPosition.lng();
-        console.log('[StreetView] 📍 Position changed:', { lat, lng });
-        dispatch(setPosition({ lat, lng }));
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastPositionUpdateRef.current;
+
+      if (timeSinceLastUpdate < POSITION_UPDATE_THROTTLE_MS) {
+        // Throttle: Schedule update for later
+        if (positionUpdateTimeoutRef.current) {
+          clearTimeout(positionUpdateTimeoutRef.current);
+        }
+
+        positionUpdateTimeoutRef.current = setTimeout(() => {
+          const newPosition = panorama.getPosition();
+          if (newPosition) {
+            const lat = newPosition.lat();
+            const lng = newPosition.lng();
+            console.log('[StreetView] 📍 Position changed (throttled):', { lat, lng });
+            dispatch(setPosition({ lat, lng }));
+            lastPositionUpdateRef.current = Date.now();
+          }
+        }, POSITION_UPDATE_THROTTLE_MS - timeSinceLastUpdate);
+      } else {
+        // Not throttled: Update immediately
+        const newPosition = panorama.getPosition();
+        if (newPosition) {
+          const lat = newPosition.lat();
+          const lng = newPosition.lng();
+          console.log('[StreetView] 📍 Position changed (immediate):', { lat, lng });
+          dispatch(setPosition({ lat, lng }));
+          lastPositionUpdateRef.current = now;
+        }
       }
     });
 
-    // Listen for POV changes (heading and pitch)
+    // Listen for POV changes (heading and pitch) with throttling
     panorama.addListener('pov_changed', () => {
-      const newPov = panorama.getPov();
-      console.log('[StreetView] 👁️ POV changed:', newPov);
-      dispatch(setPov({ 
-        heading: newPov.heading, 
-        pitch: newPov.pitch 
-      }));
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastPovUpdateRef.current;
+
+      if (timeSinceLastUpdate < POV_UPDATE_THROTTLE_MS) {
+        // Throttle: Schedule update for later
+        if (povUpdateTimeoutRef.current) {
+          clearTimeout(povUpdateTimeoutRef.current);
+        }
+
+        povUpdateTimeoutRef.current = setTimeout(() => {
+          const newPov = panorama.getPov();
+          console.log('[StreetView] 👁️ POV changed (throttled):', newPov);
+          dispatch(setPov({ 
+            heading: newPov.heading, 
+            pitch: newPov.pitch 
+          }));
+          lastPovUpdateRef.current = Date.now();
+        }, POV_UPDATE_THROTTLE_MS - timeSinceLastUpdate);
+      } else {
+        // Not throttled: Update immediately
+        const newPov = panorama.getPov();
+        console.log('[StreetView] 👁️ POV changed (immediate):', newPov);
+        dispatch(setPov({ 
+          heading: newPov.heading, 
+          pitch: newPov.pitch 
+        }));
+        lastPovUpdateRef.current = now;
+      }
     });
 
-    // Listen for zoom changes
+    // Listen for zoom changes with throttling
     panorama.addListener('zoom_changed', () => {
-      const newZoom = panorama.getZoom();
-      console.log('[StreetView] 🔍 Zoom changed:', newZoom);
-      dispatch(setZoom(newZoom));
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastZoomUpdateRef.current;
+
+      if (timeSinceLastUpdate < ZOOM_UPDATE_THROTTLE_MS) {
+        // Throttle: Schedule update for later
+        if (zoomUpdateTimeoutRef.current) {
+          clearTimeout(zoomUpdateTimeoutRef.current);
+        }
+
+        zoomUpdateTimeoutRef.current = setTimeout(() => {
+          const newZoom = panorama.getZoom();
+          console.log('[StreetView] 🔍 Zoom changed (throttled):', newZoom);
+          dispatch(setZoom(newZoom));
+          lastZoomUpdateRef.current = Date.now();
+        }, ZOOM_UPDATE_THROTTLE_MS - timeSinceLastUpdate);
+      } else {
+        // Not throttled: Update immediately
+        const newZoom = panorama.getZoom();
+        console.log('[StreetView] 🔍 Zoom changed (immediate):', newZoom);
+        dispatch(setZoom(newZoom));
+        lastZoomUpdateRef.current = now;
+      }
     });
 
-    // Mark as loaded initially
+    // Mark as loaded
     dispatch(setLoaded(true));
-    console.log('[StreetView] ✅ Street View initialization complete');
+    console.log('[StreetView] ✅ Street View initialization complete with throttled listeners');
 
     return () => {
       console.log('[StreetView] 🧹 Cleaning up Street View...');
+      
+      // Clear any pending throttled updates
+      if (positionUpdateTimeoutRef.current) {
+        clearTimeout(positionUpdateTimeoutRef.current);
+      }
+      if (povUpdateTimeoutRef.current) {
+        clearTimeout(povUpdateTimeoutRef.current);
+      }
+      if (zoomUpdateTimeoutRef.current) {
+        clearTimeout(zoomUpdateTimeoutRef.current);
+      }
+      
       panoramaRef.current = null;
-      setIsInitialized(false);
     };
-  }, [isReady, dispatch, isInitialized]);
+  }, [isReady, dispatch]);
 
   // Update panorama when Redux state changes (from external sources like teleport)
+  // with additional safeguards to prevent infinite loops
   useEffect(() => {
-    if (!panoramaRef.current || !isInitialized) {
+    if (!panoramaRef.current) {
       console.log('[StreetView] ⚠️ Cannot update position - panorama not initialized');
       return;
     }
@@ -127,63 +194,13 @@ export const StreetView = ({ isReady }: StreetViewProps) => {
         to: position,
       });
       
-      // Create a StreetViewService to check if Street View is available
-      const streetViewService = new google.maps.StreetViewService();
-      const SEARCH_RADIUS = 50; // meters
-      
-      console.log('[StreetView] 🔍 Checking Street View availability at target location...');
-      
-      streetViewService.getPanorama(
-        {
-          location: position,
-          radius: SEARCH_RADIUS,
-          source: google.maps.StreetViewSource.OUTDOOR,
-        },
-        (data, status) => {
-          if (status === 'OK' && data && data.location) {
-            const nearestLocation = data.location.latLng;
-            
-            if (nearestLocation) {
-              const nearestLat = nearestLocation.lat();
-              const nearestLng = nearestLocation.lng();
-              
-              console.log('[StreetView] ✅ Street View available:', {
-                requested: position,
-                nearest: { lat: nearestLat, lng: nearestLng },
-                panoId: data.location.pano,
-              });
-              
-              // Update the panorama to the nearest available location
-              if (panoramaRef.current) {
-                panoramaRef.current.setPano(data.location.pano!);
-                panoramaRef.current.setPov(pov);
-                panoramaRef.current.setZoom(zoom);
-                
-                console.log('[StreetView] 🎯 Panorama updated to nearest location');
-              }
-            }
-          } else {
-            console.error('[StreetView] ❌ No Street View available near target location:', {
-              status,
-              position,
-              searchRadius: SEARCH_RADIUS,
-            });
-            
-            // Fallback: Try to set position directly anyway
-            console.log('[StreetView] 🔄 Attempting direct position update as fallback...');
-            if (panoramaRef.current) {
-              panoramaRef.current.setPosition(position);
-              panoramaRef.current.setPov(pov);
-              panoramaRef.current.setZoom(zoom);
-            }
-          }
-        }
-      );
+      // Update the panorama position
+      panoramaRef.current.setPosition(position);
     }
-  }, [position, pov, zoom, isInitialized]);
+  }, [position]);
 
   useEffect(() => {
-    if (!panoramaRef.current || !isInitialized) {
+    if (!panoramaRef.current) {
       console.log('[StreetView] ⚠️ Cannot update POV - panorama not initialized');
       return;
     }
@@ -194,17 +211,17 @@ export const StreetView = ({ isReady }: StreetViewProps) => {
       console.log('[StreetView] 🔄 Updating POV from Redux:', pov);
       panoramaRef.current.setPov(pov);
     }
-  }, [pov, isInitialized]);
+  }, [pov]);
 
   useEffect(() => {
-    if (!panoramaRef.current || !isInitialized) return;
+    if (!panoramaRef.current) return;
 
     const currentZoom = panoramaRef.current.getZoom();
     if (Math.abs(currentZoom - zoom) > 0.01) {
       console.log('[StreetView] 🔄 Updating zoom from Redux:', zoom);
       panoramaRef.current.setZoom(zoom);
     }
-  }, [zoom, isInitialized]);
+  }, [zoom]);
 
   return (
     <div
