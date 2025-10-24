@@ -126,7 +126,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       animationFrameRef.current = requestAnimationFrame(animate);
 
       // Update arrow scale animations AND distance-based opacity
-      let hasActiveAnimations = false;
       routeArrowsRef.current.forEach(arrowState => {
         // SCALE ANIMATION
         if (arrowState.isAnimating) {
@@ -142,8 +141,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
               arrowState.currentScale,
               arrowState.currentScale
             );
-            
-            hasActiveAnimations = true;
           } else {
             arrowState.currentScale = arrowState.targetScale;
             arrowState.group.scale.set(
@@ -177,10 +174,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         arrowState.coneMaterial.opacity = opacity;
         arrowState.cylinderMaterial.opacity = opacity;
       });
-
-      if (hasActiveAnimations) {
-        console.log('[ThreeJS] 🎬 Animating arrow scales...');
-      }
 
       if (rendererRef.current && sceneRef.current && cameraRef.current) {
         rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -495,8 +488,8 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
 
     const newCuboids: LocationCuboid[] = [];
 
-    // Create cuboid geometry (10x10x3 - width x depth x height)
-    const cuboidGeometry = new THREE.BoxGeometry(10, 3, 10);
+    // Create cuboid geometry (20x20x8 - width x depth x height)
+    const cuboidGeometry = new THREE.BoxGeometry(20, 8, 20);
     
     // Semi-translucent amber material
     const createCuboidMaterial = () => new THREE.MeshStandardMaterial({
@@ -530,10 +523,10 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       
       // Position at ground level (compensate for Street View eye level)
       // Street View eye level is at y=0, so ground is at y=-STREET_VIEW_EYE_LEVEL
-      // Cuboid height is 3, so center it at ground + half height
+      // Cuboid height is 8, so center it at ground + half height
       mesh.position.set(
         point3D.x,
-        -STREET_VIEW_EYE_LEVEL + 1.5, // Ground level + half of cuboid height (3/2 = 1.5)
+        -STREET_VIEW_EYE_LEVEL + 4, // Ground level + half of cuboid height (8/2 = 4)
         point3D.z
       );
       
@@ -543,6 +536,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       console.log('[ThreeJS] ✅ Source cuboid created at:', {
         position: mesh.position,
         distance: Math.sqrt(point3D.x * point3D.x + point3D.z * point3D.z).toFixed(2) + 'm',
+        dimensions: '20x20x8',
       });
     } else if (sourceLocation) {
       console.log('[ThreeJS] ⏸️ Source location outside catchment area:', {
@@ -562,7 +556,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       // Position at ground level (compensate for Street View eye level)
       mesh.position.set(
         point3D.x,
-        -STREET_VIEW_EYE_LEVEL + 1.5, // Ground level + half of cuboid height
+        -STREET_VIEW_EYE_LEVEL + 4, // Ground level + half of cuboid height (8/2 = 4)
         point3D.z
       );
       
@@ -572,6 +566,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       console.log('[ThreeJS] ✅ Destination cuboid created at:', {
         position: mesh.position,
         distance: Math.sqrt(point3D.x * point3D.x + point3D.z * point3D.z).toFixed(2) + 'm',
+        dimensions: '20x20x8',
       });
     } else if (destinationLocation) {
       console.log('[ThreeJS] ⏸️ Destination location outside catchment area:', {
@@ -697,7 +692,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         routeArrowsRef.current.forEach(arrowState => {
           if (arrowState.scaleTimeoutId !== undefined) {
             clearTimeout(arrowState.scaleTimeoutId);
-            console.log('[ThreeJS] ⏸️ Cancelled pending scale animation timeout');
           }
           
           sceneRef.current?.remove(arrowState.group);
@@ -732,11 +726,9 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
     }
 
     if (routeArrowsRef.current.length > 0) {
-      console.log('[ThreeJS] 🧹 Route markers regenerated - cancelling all pending scale animations...');
       routeArrowsRef.current.forEach(arrowState => {
         if (arrowState.scaleTimeoutId !== undefined) {
           clearTimeout(arrowState.scaleTimeoutId);
-          console.log('[ThreeJS] ⏸️ Cancelled pending scale animation timeout for arrow');
         }
         
         sceneRef.current?.remove(arrowState.group);
@@ -756,12 +748,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
 
     const coneGeometry = new THREE.ConeGeometry(0.3, 0.6, 32, 1);
     const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 32, 1);
-    
-    console.log('[ThreeJS] 🎨 Arrow geometry created with high-quality segments:', {
-      coneSegments: 32,
-      cylinderSegments: 32,
-      improvement: '4x smoother than default (8 segments)',
-    });
 
     const newArrows: ArrowAnimationState[] = [];
     
@@ -788,10 +774,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         roughness: 0.7,
         depthWrite: false,
       });
-      
-      if (isSelectedMarker) {
-        console.log('[ThreeJS] 🔴 Creating RED arrow for selected marker at index (color IMMEDIATE):', i);
-      }
       
       const arrowGroup = new THREE.Group();
       
@@ -821,20 +803,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       };
       
       if (isSelectedMarker) {
-        console.log('[ThreeJS] ⏱️ Scheduling scale-up animation with 0.5s delay for selected marker:', {
-          index: i,
-          currentScale,
-          targetScaleAfterDelay: 2.0,
-          delay: '500ms',
-        });
-        
         const timeoutId = window.setTimeout(() => {
-          console.log('[ThreeJS] 🎬 Starting delayed scale-up animation for selected marker:', {
-            index: i,
-            currentScale: arrowState.currentScale,
-            targetScale: 2.0,
-          });
-          
           arrowState.targetScale = 2.0;
           arrowState.isAnimating = true;
           arrowState.scaleTimeoutId = undefined;
@@ -860,25 +829,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
     }
 
     routeArrowsRef.current = newArrows;
-    
-    console.log('[ThreeJS] ✅ Arrows created with IMMEDIATE color change and DELAYED scaling animation:', {
-      totalCount: newArrows.length,
-      selectedIndex: clampedSelectedIndex,
-      scheduledAnimations: newArrows.filter(a => a.scaleTimeoutId !== undefined).length,
-      isInitialLoad,
-      selectedMarkerVisuals: {
-        color: 'RED (IMMEDIATE - 0ms)',
-        targetScale: '2.0x (DELAYED - 500ms)',
-        animation: 'SCALE UP (after 0.5s delay)',
-        opacity: 'DISTANCE-BASED (5m=70%, 35m+=100%)',
-      },
-      defaultMarkerVisuals: {
-        color: 'TEAL (IMMEDIATE)',
-        targetScale: '1.0x (no animation)',
-        animation: 'NONE',
-        opacity: 'DISTANCE-BASED (5m=70%, 35m+=100%)',
-      },
-    });
 
   }, [isStreetViewLoaded, hasRoute, position, pov.heading, routePolyline, selectedMarkerIndex, dispatch, isFistTrackingActive]);
 
@@ -888,12 +838,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       return;
     }
 
-    console.log('[ThreeJS] 🎬 Updating arrow animations for selection change:', {
-      selectedIndex: selectedMarkerIndex,
-      totalArrows: routeArrowsRef.current.length,
-      isFistTrackingActive,
-    });
-
     routeArrowsRef.current.forEach((arrowState, index) => {
       const isSelected = index === selectedMarkerIndex;
       const newColor = isSelected ? 0xff0000 : 0x14b8a6;
@@ -901,32 +845,13 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       arrowState.coneMaterial.color.setHex(newColor);
       arrowState.cylinderMaterial.color.setHex(newColor);
       
-      console.log('[ThreeJS] 🎨 Arrow color changed IMMEDIATELY:', {
-        index,
-        isSelected,
-        color: isSelected ? 'RED' : 'TEAL',
-      });
-      
       if (arrowState.scaleTimeoutId !== undefined) {
         clearTimeout(arrowState.scaleTimeoutId);
         arrowState.scaleTimeoutId = undefined;
-        console.log('[ThreeJS] ⏸️ Cancelled previous pending scale animation for arrow:', index);
       }
       
       if (isSelected) {
-        console.log('[ThreeJS] ⏱️ Scheduling scale-up animation with 0.5s delay:', {
-          index,
-          currentScale: arrowState.currentScale,
-          targetScaleAfterDelay: 2.0,
-        });
-        
         const timeoutId = window.setTimeout(() => {
-          console.log('[ThreeJS] 🎬 Starting delayed scale-up animation:', {
-            index,
-            currentScale: arrowState.currentScale,
-            targetScale: 2.0,
-          });
-          
           arrowState.targetScale = 2.0;
           arrowState.isAnimating = true;
           arrowState.scaleTimeoutId = undefined;
@@ -935,12 +860,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         arrowState.scaleTimeoutId = timeoutId;
       } else {
         if (arrowState.targetScale !== 1.0) {
-          console.log('[ThreeJS] 🎬 Starting immediate scale-down animation:', {
-            index,
-            currentScale: arrowState.currentScale,
-            targetScale: 1.0,
-          });
-          
           arrowState.targetScale = 1.0;
           arrowState.isAnimating = true;
         }
