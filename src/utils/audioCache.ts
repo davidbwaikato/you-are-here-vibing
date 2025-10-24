@@ -32,14 +32,20 @@ export const generateAudioFilename = async (
 
 /**
  * Check if audio file exists in cache
+ * TEMPORARILY DISABLED FOR TESTING - Always returns false
  */
 export const checkAudioCache = async (filename: string): Promise<boolean> => {
+  // Temporarily return false to force audio generation for testing
+  return false;
+  
+  /* Original implementation - commented out for testing
   try {
     const response = await fetch(`/audio-cache/${filename}`, { method: 'HEAD' });
     return response.ok;
   } catch {
     return false;
   }
+  */
 };
 
 /**

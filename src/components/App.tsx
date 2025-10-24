@@ -10,6 +10,8 @@ import { useProximityAudio } from '@/hooks/useProximityAudio';
 import { setLoaded } from '@/store/streetViewSlice';
 
 export const App = () => {
+  console.log('[App] 🚀 App component rendering');
+
   const dispatch = useDispatch();
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
   const [isStreetViewReady, setIsStreetViewReady] = useState(false);
@@ -18,7 +20,9 @@ export const App = () => {
   const locationState = useLocationParams(isGoogleMapsLoaded);
 
   // Initialize proximity-based and keyboard-based audio playback
+  console.log('[App] 🎵 About to call useProximityAudio hook...');
   const audioState = useProximityAudio();
+  console.log('[App] 🎵 useProximityAudio hook returned:', audioState);
 
   // Check if Google Maps API is loaded
   useEffect(() => {
@@ -57,7 +61,7 @@ export const App = () => {
     );
   }
 
-  console.log('[App] 🎵 Audio state:', audioState);
+  console.log('[App] 🎵 Current audio state:', audioState);
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
@@ -114,11 +118,11 @@ export const App = () => {
           {/* Keyboard Controls Help */}
           <div className="text-xs text-gray-500 border-t border-white/10 pt-2 space-y-1">
             <div className="flex items-center gap-2">
-              <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white font-semibold">S</kbd>
+              <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white font-semibold">I</kbd>
               <span>Toggle Source Audio</span>
             </div>
             <div className="flex items-center gap-2">
-              <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white font-semibold">D</kbd>
+              <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-white font-semibold">O</kbd>
               <span>Toggle Destination Audio</span>
             </div>
           </div>
