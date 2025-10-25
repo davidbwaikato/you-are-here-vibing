@@ -2,7 +2,7 @@ import { Provider } from 'react-redux';
 import { store } from './store/store';
 import { StreetViewCanvas } from './components/StreetViewCanvas';
 import { SplashScreen } from './components/SplashScreen';
-import { LocationErrorPage } from './components/LocationErrorPage';
+import { LocationSearchPage } from './components/LocationSearchPage';
 import { useState, useEffect, useRef } from 'react';
 import { useLocationParams } from './hooks/useLocationParams';
 import { useSelector } from 'react-redux';
@@ -12,8 +12,12 @@ import { useProximityAudio } from './hooks/useProximityAudio';
 // Debug flag to control console logging
 const DEBUG_APP = false;
 
+// App phases
+type AppPhase = 'splash' | 'location-search' | 'street-view';
+
 function AppContent() {
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
+  const [currentPhase, setCurrentPhase] = useState<AppPhase>('splash');
   const isCheckingGoogleMaps = useRef(false);
   const isLoaded = useSelector((state: RootState) => state.streetView.isLoaded);
 
@@ -75,8 +79,7 @@ function AppContent() {
     isCheckingGoogleMaps.current = true;
 
     if (DEBUG_APP) {
-      console.log('[App] 🚀 Starting initialization sequence...');
-      console.log('[App] ⏳ Step 1: Loading Google Maps API...');
+      console.log('[App] 🚀 Phase 1: SPLASH SCREEN - Loading Google Maps API...');
     }
 
     const checkGoogleMaps = () => {
@@ -85,9 +88,12 @@ function AppContent() {
       
       if (hasMaps) {
         if (DEBUG_APP) {
-          console.log('[App] ✅ Step 1 complete: Google Maps API loaded');
+          console.log('[App] ✅ Google Maps API loaded');
+          console.log('[App] 🎬 Transitioning to Phase 2: LOCATION SEARCH PAGE');
         }
         setIsGoogleMapsLoaded(true);
+        // Transition from splash to location search page
+        setCurrentPhase('location-search');
       } else {
         setTimeout(checkGoogleMaps, 100);
       }
@@ -99,8 +105,10 @@ function AppContent() {
   // Get location parameters - waits for Google Maps to be loaded
   const { 
     error, 
-    hasSourceError, 
-    attemptedSourceLocation, 
+    sourceError,
+    destinationError,
+    sourceRecognized,
+    destinationRecognized,
     isInitializing,
     sourceLocation,
     destinationLocation,
@@ -108,58 +116,74 @@ function AppContent() {
     destinationAddress,
   } = useLocationParams(isGoogleMapsLoaded);
 
-  // Log when fully ready
+  // Check if we should show StreetView (user clicked "Start Your Exploration")
+  const urlParams = new URLSearchParams(window.location.search);
+  const shouldShowStreetView = urlParams.has('start') && urlParams.get('start') === 'true';
+
+  // Handle phase transitions
   useEffect(() => {
-    if (isGoogleMapsLoaded && !isInitializing && isLoaded) {
+    if (shouldShowStreetView && currentPhase === 'location-search' && !isInitializing) {
       if (DEBUG_APP) {
-        console.log('[App] ✅ All initialization steps complete (including panorama)');
-        console.log('[App] 🎬 Ready to show main interface');
+        console.log('[App] 🎬 Transitioning to Phase 3: STREET VIEW PANORAMA');
       }
+      setCurrentPhase('street-view');
     }
-  }, [isGoogleMapsLoaded, isInitializing, isLoaded]);
-
-  // Show error page if there's a source location error
-  if (hasSourceError && attemptedSourceLocation) {
-    console.error('[App] ❌ Showing error page for:', attemptedSourceLocation);
-    return <LocationErrorPage attemptedLocation={attemptedSourceLocation} errorMessage={error || ''} />;
-  }
-
-  // Determine what to show
-  const canShowStreetView = isGoogleMapsLoaded && !isInitializing;
-  const shouldShowSplash = !canShowStreetView || !isLoaded;
+  }, [shouldShowStreetView, currentPhase, isInitializing]);
 
   if (DEBUG_APP) {
+    console.log('[App] Current phase:', currentPhase);
     console.log('[App] Render state:', {
       isGoogleMapsLoaded,
       isInitializing,
       isLoaded,
-      canShowStreetView,
-      shouldShowSplash
+      currentPhase,
+      shouldShowStreetView
     });
-
-    console.log('[App] 🎵 Current audio state:', audioState);
   }
 
-  return (
-    <>
-      {/* Always render StreetViewCanvas once we have Google Maps and location params */}
-      {canShowStreetView && (
-        <StreetViewCanvas 
-          isGoogleMapsLoaded={isGoogleMapsLoaded}
-          sourceLocation={sourceLocation}
-          destinationLocation={destinationLocation}
-          sourceAddress={sourceAddress}
-          destinationAddress={destinationAddress}
-          hasSourceError={hasSourceError}
-        />
-      )}
-      
-      {/* Show splash screen on top until panorama is ready */}
-      {shouldShowSplash && (
-        <SplashScreen onComplete={() => {}} />
-      )}
-    </>
-  );
+  // Phase 1: Splash Screen
+  if (currentPhase === 'splash') {
+    return <SplashScreen onComplete={() => {}} />;
+  }
+
+  // Phase 2: Location Search Page
+  if (currentPhase === 'location-search') {
+    return (
+      <LocationSearchPage 
+        sourceError={sourceError} 
+        destinationError={destinationError}
+      />
+    );
+  }
+
+  // Phase 3: Street View Panorama
+  if (currentPhase === 'street-view') {
+    const canShowStreetView = isGoogleMapsLoaded && !isInitializing;
+    const shouldShowSplash = !canShowStreetView || !isLoaded;
+
+    return (
+      <>
+        {/* Always render StreetViewCanvas once we have Google Maps and location params */}
+        {canShowStreetView && (
+          <StreetViewCanvas 
+            isGoogleMapsLoaded={isGoogleMapsLoaded}
+            sourceLocation={sourceLocation}
+            destinationLocation={destinationLocation}
+            sourceAddress={sourceAddress}
+            destinationAddress={destinationAddress}
+            hasSourceError={false}
+          />
+        )}
+        
+        {/* Show splash screen on top until panorama is ready */}
+        {shouldShowSplash && (
+          <SplashScreen onComplete={() => {}} />
+        )}
+      </>
+    );
+  }
+
+  return null;
 }
 
 function App() {

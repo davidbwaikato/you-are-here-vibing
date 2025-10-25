@@ -20,6 +20,17 @@ import {
   setRoutePolyline 
 } from '../store/streetViewSlice';
 
+export interface LocationError {
+  attemptedLocation: string;
+  errorMessage: string;
+}
+
+export interface RecognizedLocation {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
 interface LocationState {
   isInitializing: boolean;
   error: string | null;
@@ -27,8 +38,10 @@ interface LocationState {
   destinationLocation: LatLng | null;
   sourceAddress: string | null;
   destinationAddress: string | null;
-  attemptedSourceLocation: string | null;
-  hasSourceError: boolean;
+  sourceError: LocationError | null;
+  destinationError: LocationError | null;
+  sourceRecognized: RecognizedLocation | null;
+  destinationRecognized: RecognizedLocation | null;
   route: RouteResult | null;
 }
 
@@ -55,8 +68,10 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
     destinationLocation: DEFAULT_DESTINATION_LOCATION,
     sourceAddress: 'Trevi Fountain, Rome, Italy',
     destinationAddress: 'The Spanish Steps, Rome, Italy',
-    attemptedSourceLocation: null,
-    hasSourceError: false,
+    sourceError: null,
+    destinationError: null,
+    sourceRecognized: null,
+    destinationRecognized: null,
     route: null,
   });
 
@@ -194,8 +209,18 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
           destinationAddress: 'The Spanish Steps, Rome, Italy',
-          attemptedSourceLocation: null,
-          hasSourceError: false,
+          sourceError: null,
+          destinationError: null,
+          sourceRecognized: {
+            lat: DEFAULT_SOURCE_LOCATION.lat,
+            lng: DEFAULT_SOURCE_LOCATION.lng,
+            address: 'Trevi Fountain, Rome, Italy',
+          },
+          destinationRecognized: {
+            lat: DEFAULT_DESTINATION_LOCATION.lat,
+            lng: DEFAULT_DESTINATION_LOCATION.lng,
+            address: 'The Spanish Steps, Rome, Italy',
+          },
           route: 'error' in routeResult ? null : routeResult,
         };
         setState(defaultState);
@@ -219,8 +244,8 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         ...prev, 
         isInitializing: true, 
         error: null,
-        attemptedSourceLocation: params.src || null,
-        hasSourceError: false,
+        sourceError: null,
+        destinationError: null,
       }));
 
       try {
@@ -259,21 +284,30 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
           destinationAddress: 'The Spanish Steps, Rome, Italy',
-          attemptedSourceLocation: params.src || null,
-          hasSourceError: false,
+          sourceError: null,
+          destinationError: null,
+          sourceRecognized: null,
+          destinationRecognized: null,
           route: null,
         };
 
         // Process source location
         if (srcResult) {
           if ('error' in srcResult) {
-            newState.error = srcResult.error;
-            newState.hasSourceError = true;
+            newState.sourceError = {
+              attemptedLocation: params.src || '',
+              errorMessage: srcResult.error,
+            };
             console.error('[useLocationParams] ❌ Source geocoding failed:', srcResult.error);
           } else {
             newState.sourceLocation = srcResult.location;
             newState.sourceAddress = srcResult.formattedAddress;
-            newState.hasSourceError = false;
+            newState.sourceError = null;
+            newState.sourceRecognized = {
+              lat: srcResult.location.lat,
+              lng: srcResult.location.lng,
+              address: srcResult.formattedAddress,
+            };
             console.log('[useLocationParams] ✅ Source geocoded:', srcResult.formattedAddress);
             
             // Update Redux store with source location and address
@@ -327,14 +361,23 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           }
         }
 
-        // Process destination location (only if source succeeded or wasn't provided)
-        if (dstResult && !newState.hasSourceError) {
+        // Process destination location
+        if (dstResult) {
           if ('error' in dstResult) {
-            console.warn('[useLocationParams] ⚠️ Destination geocoding failed:', dstResult.error);
-            // Don't block the app for destination errors, just log them
+            newState.destinationError = {
+              attemptedLocation: params.dst || '',
+              errorMessage: dstResult.error,
+            };
+            console.error('[useLocationParams] ❌ Destination geocoding failed:', dstResult.error);
           } else {
             newState.destinationLocation = dstResult.location;
             newState.destinationAddress = dstResult.formattedAddress;
+            newState.destinationError = null;
+            newState.destinationRecognized = {
+              lat: dstResult.location.lat,
+              lng: dstResult.location.lng,
+              address: dstResult.formattedAddress,
+            };
             console.log('[useLocationParams] ✅ Destination geocoded:', dstResult.formattedAddress);
             
             // Update Redux store with destination location and address
@@ -388,7 +431,7 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
         }
 
         // Calculate route if both locations are valid
-        if (newState.sourceLocation && newState.destinationLocation && !newState.hasSourceError) {
+        if (newState.sourceLocation && newState.destinationLocation && !newState.sourceError && !newState.destinationError) {
           console.log('[useLocationParams] 🚶 Calculating walking route...');
           const routeResult = await fetchWalkingRoute(
             newState.sourceLocation,
@@ -417,8 +460,16 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
           destinationLocation: DEFAULT_DESTINATION_LOCATION,
           sourceAddress: 'Trevi Fountain, Rome, Italy',
           destinationAddress: 'The Spanish Steps, Rome, Italy',
-          attemptedSourceLocation: params.src || null,
-          hasSourceError: !!params.src,
+          sourceError: params.src ? {
+            attemptedLocation: params.src,
+            errorMessage: 'Failed to process location',
+          } : null,
+          destinationError: params.dst ? {
+            attemptedLocation: params.dst,
+            errorMessage: 'Failed to process location',
+          } : null,
+          sourceRecognized: null,
+          destinationRecognized: null,
           route: null,
         };
         setState(errorState);
