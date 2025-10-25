@@ -1,3 +1,12 @@
+// ============================================================================
+// OPENAI API CONTROL FLAG
+// ============================================================================
+// IMPORTANT: Set to false to disable all OpenAI API calls and avoid costs
+// This is for internal development/testing purposes only
+// When testing non-audio features, set this to false to prevent API charges
+const ENABLE_OPENAI_API_CALLS = false;
+// ============================================================================
+
 export interface EnhancedDescriptionResult {
   enhancedDescription: string;
 }
@@ -25,6 +34,15 @@ export const generateEnhancedDescription = async (
   placeTypes: string[]
 ): Promise<EnhancedDescriptionResult | EnhancedDescriptionError> => {
   console.log('[OpenAI API] 🤖 Generating enhanced description for:', placeName);
+
+  // Check if OpenAI API calls are enabled
+  if (!ENABLE_OPENAI_API_CALLS) {
+    console.log('[OpenAI API] 🚫 OpenAI API calls DISABLED - Skipping enhanced description generation');
+    console.log('[OpenAI API] 💡 To enable: Set ENABLE_OPENAI_API_CALLS = true in src/services/openai.ts');
+    return { 
+      error: 'OpenAI API calls are disabled (ENABLE_OPENAI_API_CALLS = false)' 
+    };
+  }
 
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   
@@ -141,6 +159,15 @@ export const synthesizeTextToSpeech = async (
     voice,
     preview: text.substring(0, 50) + '...',
   });
+
+  // Check if OpenAI API calls are enabled
+  if (!ENABLE_OPENAI_API_CALLS) {
+    console.log('[OpenAI TTS] 🚫 OpenAI API calls DISABLED - Skipping text-to-speech synthesis');
+    console.log('[OpenAI TTS] 💡 To enable: Set ENABLE_OPENAI_API_CALLS = true in src/services/openai.ts');
+    return { 
+      error: 'OpenAI API calls are disabled (ENABLE_OPENAI_API_CALLS = false)' 
+    };
+  }
 
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   

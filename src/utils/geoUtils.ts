@@ -2,6 +2,9 @@
  * Geographic utility functions for route processing
  */
 
+// Debug flag to control console logging
+const DEBUG_GEO_UTILS = false;
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -139,15 +142,17 @@ export const calculateMarkerVisibility = (
   const halfFOV = userFOV / 2;
   const isVisible = angularDiff <= halfFOV;
 
-  console.log('[GeoUtils] 👁️ Marker visibility check:', {
-    distance: distance.toFixed(2) + 'm',
-    bearing: bearing.toFixed(1) + '°',
-    userHeading: userHeading.toFixed(1) + '°',
-    angularDiff: angularDiff.toFixed(1) + '°',
-    userFOV: userFOV.toFixed(1) + '°',
-    halfFOV: halfFOV.toFixed(1) + '°',
-    isVisible,
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] 👁️ Marker visibility check:', {
+      distance: distance.toFixed(2) + 'm',
+      bearing: bearing.toFixed(1) + '°',
+      userHeading: userHeading.toFixed(1) + '°',
+      angularDiff: angularDiff.toFixed(1) + '°',
+      userFOV: userFOV.toFixed(1) + '°',
+      halfFOV: halfFOV.toFixed(1) + '°',
+      isVisible,
+    });
+  }
 
   return {
     distance,
@@ -181,13 +186,15 @@ export const getVisibleMarkers = (
   minDistance: number = 5,
   maxDistance: number = 100
 ): VisibleMarkersResult => {
-  console.log('[GeoUtils] 🔍 Starting visible markers detection:', {
-    totalRoutePoints: route.length,
-    userPosition,
-    userHeading: userHeading.toFixed(1) + '°',
-    userFOV: userFOV.toFixed(1) + '°',
-    distanceRange: `${minDistance}m - ${maxDistance}m`,
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] 🔍 Starting visible markers detection:', {
+      totalRoutePoints: route.length,
+      userPosition,
+      userHeading: userHeading.toFixed(1) + '°',
+      userFOV: userFOV.toFixed(1) + '°',
+      distanceRange: `${minDistance}m - ${maxDistance}m`,
+    });
+  }
 
   const visibleMarkers: VisibleMarkerInfo[] = [];
   let closestDistance = Infinity;
@@ -229,12 +236,14 @@ export const getVisibleMarkers = (
         closestMarkerIndex = visibleMarkers.length - 1; // Index within visible markers array
       }
 
-      console.log(`[GeoUtils] ✅ Visible marker found:`, {
-        originalRouteIndex: i,
-        distance: visibility.distance.toFixed(2) + 'm',
-        bearing: visibility.bearing.toFixed(1) + '°',
-        visibleArrayIndex: visibleMarkers.length - 1,
-      });
+      if (DEBUG_GEO_UTILS) {
+        console.log(`[GeoUtils] ✅ Visible marker found:`, {
+          originalRouteIndex: i,
+          distance: visibility.distance.toFixed(2) + 'm',
+          bearing: visibility.bearing.toFixed(1) + '°',
+          visibleArrayIndex: visibleMarkers.length - 1,
+        });
+      }
     }
   }
 
@@ -245,13 +254,15 @@ export const getVisibleMarkers = (
     visibleCount: visibleMarkers.length,
   };
 
-  console.log('[GeoUtils] ✅ Visible markers detection complete:', {
-    totalMarkersChecked: result.totalMarkersChecked,
-    visibleCount: result.visibleCount,
-    closestMarkerIndex: result.closestMarkerIndex,
-    closestDistance: closestDistance !== Infinity ? closestDistance.toFixed(2) + 'm' : 'N/A',
-    retentionRate: ((result.visibleCount / result.totalMarkersChecked) * 100).toFixed(1) + '%',
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] ✅ Visible markers detection complete:', {
+      totalMarkersChecked: result.totalMarkersChecked,
+      visibleCount: result.visibleCount,
+      closestMarkerIndex: result.closestMarkerIndex,
+      closestDistance: closestDistance !== Infinity ? closestDistance.toFixed(2) + 'm' : 'N/A',
+      retentionRate: ((result.visibleCount / result.totalMarkersChecked) * 100).toFixed(1) + '%',
+    });
+  }
 
   return result;
 };
@@ -263,7 +274,9 @@ export const calculatePolylineSegments = (
   points: LatLng[]
 ): PolylineSegment[] => {
   if (points.length < 2) {
-    console.warn('[GeoUtils] ⚠️ Polyline has fewer than 2 points, cannot calculate segments');
+    if (DEBUG_GEO_UTILS) {
+      console.warn('[GeoUtils] ⚠️ Polyline has fewer than 2 points, cannot calculate segments');
+    }
     return [];
   }
 
@@ -281,10 +294,12 @@ export const calculatePolylineSegments = (
     });
   }
 
-  console.log('[GeoUtils] 📏 Calculated segments:', {
-    totalSegments: segments.length,
-    totalDistance: segments.reduce((sum, seg) => sum + seg.distanceMeters, 0).toFixed(2) + 'm',
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] 📏 Calculated segments:', {
+      totalSegments: segments.length,
+      totalDistance: segments.reduce((sum, seg) => sum + seg.distanceMeters, 0).toFixed(2) + 'm',
+    });
+  }
 
   return segments;
 };
@@ -322,13 +337,17 @@ export const interpolatePolyline = (
   points: LatLng[],
   maxSpacing: number
 ): InterpolatedPolyline => {
-  console.log('[GeoUtils] 🔄 Starting polyline interpolation:', {
-    inputPoints: points.length,
-    maxSpacing: maxSpacing + 'm',
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] 🔄 Starting polyline interpolation:', {
+      inputPoints: points.length,
+      maxSpacing: maxSpacing + 'm',
+    });
+  }
 
   if (points.length < 2) {
-    console.warn('[GeoUtils] ⚠️ Polyline has fewer than 2 points, returning as-is');
+    if (DEBUG_GEO_UTILS) {
+      console.warn('[GeoUtils] ⚠️ Polyline has fewer than 2 points, returning as-is');
+    }
     return {
       points,
       originalPointCount: points.length,
@@ -357,7 +376,9 @@ export const interpolatePolyline = (
       const numInterpolations = Math.floor(segmentDistance / maxSpacing);
       const actualSpacing = segmentDistance / (numInterpolations + 1);
 
-      console.log(`[GeoUtils] 📍 Segment ${i + 1}: ${segmentDistance.toFixed(2)}m - Adding ${numInterpolations} interpolation points (spacing: ${actualSpacing.toFixed(2)}m)`);
+      if (DEBUG_GEO_UTILS) {
+        console.log(`[GeoUtils] 📍 Segment ${i + 1}: ${segmentDistance.toFixed(2)}m - Adding ${numInterpolations} interpolation points (spacing: ${actualSpacing.toFixed(2)}m)`);
+      }
 
       // Add evenly distributed interpolation points
       for (let j = 1; j <= numInterpolations; j++) {
@@ -367,7 +388,9 @@ export const interpolatePolyline = (
         interpolatedCount++;
       }
     } else {
-      console.log(`[GeoUtils] ✅ Segment ${i + 1}: ${segmentDistance.toFixed(2)}m - No interpolation needed`);
+      if (DEBUG_GEO_UTILS) {
+        console.log(`[GeoUtils] ✅ Segment ${i + 1}: ${segmentDistance.toFixed(2)}m - No interpolation needed`);
+      }
     }
   }
 
@@ -381,13 +404,15 @@ export const interpolatePolyline = (
     totalDistance,
   };
 
-  console.log('[GeoUtils] ✅ Interpolation complete:', {
-    originalPoints: result.originalPointCount,
-    interpolatedPoints: result.interpolatedPointCount,
-    totalPoints: result.points.length,
-    totalDistance: result.totalDistance.toFixed(2) + 'm',
-    averageSpacing: (result.totalDistance / (result.points.length - 1)).toFixed(2) + 'm',
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] ✅ Interpolation complete:', {
+      originalPoints: result.originalPointCount,
+      interpolatedPoints: result.interpolatedPointCount,
+      totalPoints: result.points.length,
+      totalDistance: result.totalDistance.toFixed(2) + 'm',
+      averageSpacing: (result.totalDistance / (result.points.length - 1)).toFixed(2) + 'm',
+    });
+  }
 
   return result;
 };
@@ -409,12 +434,14 @@ export const filterPointsByDistance = (
   minDistance: number,
   maxDistance: number
 ): LatLng[] => {
-  console.log('[GeoUtils] 🔍 Filtering points by distance:', {
-    inputPoints: points.length,
-    referencePoint,
-    minDistance: minDistance + 'm',
-    maxDistance: maxDistance + 'm',
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] 🔍 Filtering points by distance:', {
+      inputPoints: points.length,
+      referencePoint,
+      minDistance: minDistance + 'm',
+      maxDistance: maxDistance + 'm',
+    });
+  }
 
   const filteredPoints: LatLng[] = [];
   let tooClose = 0;
@@ -432,12 +459,14 @@ export const filterPointsByDistance = (
     }
   }
 
-  console.log('[GeoUtils] ✅ Distance filtering complete:', {
-    outputPoints: filteredPoints.length,
-    excludedTooClose: tooClose,
-    excludedTooFar: tooFar,
-    retentionRate: ((filteredPoints.length / points.length) * 100).toFixed(1) + '%',
-  });
+  if (DEBUG_GEO_UTILS) {
+    console.log('[GeoUtils] ✅ Distance filtering complete:', {
+      outputPoints: filteredPoints.length,
+      excludedTooClose: tooClose,
+      excludedTooFar: tooFar,
+      retentionRate: ((filteredPoints.length / points.length) * 100).toFixed(1) + '%',
+    });
+  }
 
   return filteredPoints;
 };

@@ -3,6 +3,9 @@ import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { isUserInsideLocationCuboid } from '@/utils/proximityDetection';
 
+// Debug flag to control console logging
+const DEBUG_PROXIMITY_AUDIO = false;
+
 interface AudioState {
   sourceAudio: HTMLAudioElement | null;
   destinationAudio: HTMLAudioElement | null;
@@ -22,7 +25,9 @@ interface AudioState {
  * Keyboard controls: 'I' for source, 'O' for destination (toggle play/pause)
  */
 export const useProximityAudio = () => {
-  console.log('[ProximityAudio] 🚀 HOOK INITIALIZED - useProximityAudio called');
+  if (DEBUG_PROXIMITY_AUDIO) {
+    console.log('[ProximityAudio] 🚀 HOOK INITIALIZED - useProximityAudio called');
+  }
 
   const audioStateRef = useRef<AudioState>({
     sourceAudio: null,
@@ -51,29 +56,41 @@ export const useProximityAudio = () => {
 
   // Toggle source audio playback (keyboard control)
   const toggleSourceAudio = useCallback(() => {
-    console.log('[ProximityAudio] 🎹 toggleSourceAudio FUNCTION CALLED');
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] 🎹 toggleSourceAudio FUNCTION CALLED');
+    }
     const audio = audioStateRef.current.sourceAudio;
     if (!audio) {
-      console.log('[ProximityAudio] ⚠️ Source audio not available');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⚠️ Source audio not available');
+      }
       return;
     }
 
-    console.log('[ProximityAudio] 🎹 KEYBOARD CONTROL: Toggle source audio requested');
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] 🎹 KEYBOARD CONTROL: Toggle source audio requested');
+    }
 
     if (audio.paused) {
       // Play source audio
-      console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Source audio');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Source audio');
+      }
       
       // Pause destination audio if playing
       if (audioStateRef.current.destinationAudio && !audioStateRef.current.destinationAudio.paused) {
-        console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Destination audio (to play source)');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Destination audio (to play source)');
+        }
         audioStateRef.current.destinationAudio.pause();
         audioStateRef.current.manualControl.destination = true;
       }
 
       audio.play()
         .then(() => {
-          console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Source audio playing successfully');
+          if (DEBUG_PROXIMITY_AUDIO) {
+            console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Source audio playing successfully');
+          }
         })
         .catch((error) => {
           console.error('[ProximityAudio] ❌ PLAYBACK FAILED: Source audio error:', error);
@@ -84,9 +101,13 @@ export const useProximityAudio = () => {
       setKeyboardControlActive('source');
     } else {
       // Pause source audio
-      console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Source audio');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Source audio');
+      }
       audio.pause();
-      console.log('[ProximityAudio] ✅ PLAYBACK PAUSED: Source audio paused successfully');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ✅ PLAYBACK PAUSED: Source audio paused successfully');
+      }
       
       audioStateRef.current.currentlyPlaying = null;
       audioStateRef.current.manualControl.source = true;
@@ -96,29 +117,41 @@ export const useProximityAudio = () => {
 
   // Toggle destination audio playback (keyboard control)
   const toggleDestinationAudio = useCallback(() => {
-    console.log('[ProximityAudio] 🎹 toggleDestinationAudio FUNCTION CALLED');
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] 🎹 toggleDestinationAudio FUNCTION CALLED');
+    }
     const audio = audioStateRef.current.destinationAudio;
     if (!audio) {
-      console.log('[ProximityAudio] ⚠️ Destination audio not available');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⚠️ Destination audio not available');
+      }
       return;
     }
 
-    console.log('[ProximityAudio] 🎹 KEYBOARD CONTROL: Toggle destination audio requested');
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] 🎹 KEYBOARD CONTROL: Toggle destination audio requested');
+    }
 
     if (audio.paused) {
       // Play destination audio
-      console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Destination audio');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Destination audio');
+      }
       
       // Pause source audio if playing
       if (audioStateRef.current.sourceAudio && !audioStateRef.current.sourceAudio.paused) {
-        console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Source audio (to play destination)');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Source audio (to play destination)');
+        }
         audioStateRef.current.sourceAudio.pause();
         audioStateRef.current.manualControl.source = true;
       }
 
       audio.play()
         .then(() => {
-          console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Destination audio playing successfully');
+          if (DEBUG_PROXIMITY_AUDIO) {
+            console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Destination audio playing successfully');
+          }
         })
         .catch((error) => {
           console.error('[ProximityAudio] ❌ PLAYBACK FAILED: Destination audio error:', error);
@@ -129,9 +162,13 @@ export const useProximityAudio = () => {
       setKeyboardControlActive('destination');
     } else {
       // Pause destination audio
-      console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Destination audio');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Destination audio');
+      }
       audio.pause();
-      console.log('[ProximityAudio] ✅ PLAYBACK PAUSED: Destination audio paused successfully');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ✅ PLAYBACK PAUSED: Destination audio paused successfully');
+      }
       
       audioStateRef.current.currentlyPlaying = null;
       audioStateRef.current.manualControl.destination = true;
@@ -141,14 +178,18 @@ export const useProximityAudio = () => {
 
   // Initialize audio elements when audio URLs are available
   useEffect(() => {
-    console.log('[ProximityAudio] 🎵 Audio initialization effect running...', {
-      hasSourceAudio: !!sourceDetails?.audioUrl,
-      hasDestinationAudio: !!destinationDetails?.audioUrl,
-      isStreetViewLoaded,
-    });
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] 🎵 Audio initialization effect running...', {
+        hasSourceAudio: !!sourceDetails?.audioUrl,
+        hasDestinationAudio: !!destinationDetails?.audioUrl,
+        isStreetViewLoaded,
+      });
+    }
 
     if (!isStreetViewLoaded) {
-      console.log('[ProximityAudio] ⏸️ Street View not loaded yet, waiting...');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⏸️ Street View not loaded yet, waiting...');
+      }
       return;
     }
 
@@ -157,16 +198,20 @@ export const useProximityAudio = () => {
 
     // Create source audio element
     if (sourceDetails?.audioUrl && !audioStateRef.current.sourceAudio) {
-      console.log('[ProximityAudio] 🎵 Creating source audio element:', {
-        filename: sourceDetails.audioFilename,
-        url: sourceDetails.audioUrl.substring(0, 50) + '...',
-      });
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] 🎵 Creating source audio element:', {
+          filename: sourceDetails.audioFilename,
+          url: sourceDetails.audioUrl.substring(0, 50) + '...',
+        });
+      }
 
       sourceAudioElement = new Audio(sourceDetails.audioUrl);
       sourceAudioElement.preload = 'auto';
       
       sourceAudioElement.addEventListener('canplaythrough', () => {
-        console.log('[ProximityAudio] ✅ Source audio ready to play');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ✅ Source audio ready to play');
+        }
         setIsAudioReady(true);
       });
 
@@ -179,16 +224,20 @@ export const useProximityAudio = () => {
 
     // Create destination audio element
     if (destinationDetails?.audioUrl && !audioStateRef.current.destinationAudio) {
-      console.log('[ProximityAudio] 🎵 Creating destination audio element:', {
-        filename: destinationDetails.audioFilename,
-        url: destinationDetails.audioUrl.substring(0, 50) + '...',
-      });
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] 🎵 Creating destination audio element:', {
+          filename: destinationDetails.audioFilename,
+          url: destinationDetails.audioUrl.substring(0, 50) + '...',
+        });
+      }
 
       destinationAudioElement = new Audio(destinationDetails.audioUrl);
       destinationAudioElement.preload = 'auto';
       
       destinationAudioElement.addEventListener('canplaythrough', () => {
-        console.log('[ProximityAudio] ✅ Destination audio ready to play');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ✅ Destination audio ready to play');
+        }
         setIsAudioReady(true);
       });
 
@@ -202,12 +251,16 @@ export const useProximityAudio = () => {
     // Cleanup function
     return () => {
       if (sourceAudioElement) {
-        console.log('[ProximityAudio] 🧹 Cleaning up source audio element');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] 🧹 Cleaning up source audio element');
+        }
         sourceAudioElement.pause();
         sourceAudioElement.src = '';
       }
       if (destinationAudioElement) {
-        console.log('[ProximityAudio] 🧹 Cleaning up destination audio element');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] 🧹 Cleaning up destination audio element');
+        }
         destinationAudioElement.pause();
         destinationAudioElement.src = '';
       }
@@ -216,68 +269,90 @@ export const useProximityAudio = () => {
 
   // Handle keyboard events
   useEffect(() => {
-    console.log('[ProximityAudio] ⌨️ Keyboard effect running...', {
-      isAudioReady,
-      hasToggleSourceAudio: !!toggleSourceAudio,
-      hasToggleDestinationAudio: !!toggleDestinationAudio,
-    });
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] ⌨️ Keyboard effect running...', {
+        isAudioReady,
+        hasToggleSourceAudio: !!toggleSourceAudio,
+        hasToggleDestinationAudio: !!toggleDestinationAudio,
+      });
+    }
 
     if (!isAudioReady) {
-      console.log('[ProximityAudio] ⏸️ Audio not ready for keyboard controls - SKIPPING listener setup');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⏸️ Audio not ready for keyboard controls - SKIPPING listener setup');
+      }
       return;
     }
 
     const handleKeyPress = (event: KeyboardEvent) => {
-      console.log('[ProximityAudio] 🎹 ===== KEY PRESS EVENT FIRED =====');
-      console.log('[ProximityAudio] 🎹 Raw event:', {
-        key: event.key,
-        code: event.code,
-        keyCode: event.keyCode,
-        which: event.which,
-        type: event.type,
-        target: event.target,
-        targetTagName: (event.target as HTMLElement)?.tagName,
-      });
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] 🎹 ===== KEY PRESS EVENT FIRED =====');
+        console.log('[ProximityAudio] 🎹 Raw event:', {
+          key: event.key,
+          code: event.code,
+          keyCode: event.keyCode,
+          which: event.which,
+          type: event.type,
+          target: event.target,
+          targetTagName: (event.target as HTMLElement)?.tagName,
+        });
+      }
 
       // Ignore if user is typing in an input field
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        console.log('[ProximityAudio] ⏭️ Key press ignored - user typing in input field');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ⏭️ Key press ignored - user typing in input field');
+        }
         return;
       }
 
       const key = event.key.toLowerCase();
       
-      console.log('[ProximityAudio] 🎹 KEY DETECTED:', {
-        key: event.key,
-        keyLowerCase: key,
-        code: event.code,
-        target: event.target,
-      });
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] 🎹 KEY DETECTED:', {
+          key: event.key,
+          keyLowerCase: key,
+          code: event.code,
+          target: event.target,
+        });
+      }
 
       if (key === 'i') {
-        console.log('[ProximityAudio] 🎹 KEY MATCHED: "I" pressed - Source audio control');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] 🎹 KEY MATCHED: "I" pressed - Source audio control');
+        }
         event.preventDefault();
         toggleSourceAudio();
       } else if (key === 'o') {
-        console.log('[ProximityAudio] 🎹 KEY MATCHED: "O" pressed - Destination audio control');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] 🎹 KEY MATCHED: "O" pressed - Destination audio control');
+        }
         event.preventDefault();
         toggleDestinationAudio();
       } else {
-        console.log('[ProximityAudio] ⏭️ Key not mapped to audio control:', key);
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ⏭️ Key not mapped to audio control:', key);
+        }
       }
     };
 
-    console.log('[ProximityAudio] ⌨️ ATTACHING keyboard event listener to window');
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] ⌨️ ATTACHING keyboard event listener to window');
+    }
     window.addEventListener('keydown', handleKeyPress);
-    console.log('[ProximityAudio] ✅ Keyboard event listener ATTACHED (I = source, O = destination)');
-
-    // Test if we can manually trigger the handler
-    console.log('[ProximityAudio] 🧪 Testing handler function exists:', typeof handleKeyPress);
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] ✅ Keyboard event listener ATTACHED (I = source, O = destination)');
+      console.log('[ProximityAudio] 🧪 Testing handler function exists:', typeof handleKeyPress);
+    }
 
     return () => {
-      console.log('[ProximityAudio] ⌨️ REMOVING keyboard event listener from window');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⌨️ REMOVING keyboard event listener from window');
+      }
       window.removeEventListener('keydown', handleKeyPress);
-      console.log('[ProximityAudio] ✅ Keyboard event listener REMOVED');
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ✅ Keyboard event listener REMOVED');
+      }
     };
   }, [isAudioReady, toggleSourceAudio, toggleDestinationAudio]);
 
@@ -302,7 +377,9 @@ export const useProximityAudio = () => {
       audioStateRef.current.isSourceInside = isInsideSource;
 
       if (isInsideSource && audioStateRef.current.sourceAudio && !audioStateRef.current.manualControl.source) {
-        console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Source audio (proximity-based)');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Source audio (proximity-based)');
+        }
         
         if (audioStateRef.current.destinationAudio && !audioStateRef.current.destinationAudio.paused) {
           audioStateRef.current.destinationAudio.pause();
@@ -310,7 +387,9 @@ export const useProximityAudio = () => {
 
         audioStateRef.current.sourceAudio.play()
           .then(() => {
-            console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Source audio (proximity)');
+            if (DEBUG_PROXIMITY_AUDIO) {
+              console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Source audio (proximity)');
+            }
           })
           .catch((error) => {
             console.error('[ProximityAudio] ❌ PLAYBACK FAILED: Source audio (proximity):', error);
@@ -319,7 +398,9 @@ export const useProximityAudio = () => {
         audioStateRef.current.currentlyPlaying = 'source';
         setKeyboardControlActive(null);
       } else if (!isInsideSource && audioStateRef.current.sourceAudio && audioStateRef.current.currentlyPlaying === 'source') {
-        console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Source audio (exited cuboid)');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Source audio (exited cuboid)');
+        }
         audioStateRef.current.sourceAudio.pause();
         
         audioStateRef.current.currentlyPlaying = null;
@@ -333,7 +414,9 @@ export const useProximityAudio = () => {
       audioStateRef.current.isDestinationInside = isInsideDestination;
 
       if (isInsideDestination && audioStateRef.current.destinationAudio && !audioStateRef.current.manualControl.destination) {
-        console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Destination audio (proximity-based)');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ▶️ TRIGGERING PLAY: Destination audio (proximity-based)');
+        }
         
         if (audioStateRef.current.sourceAudio && !audioStateRef.current.sourceAudio.paused) {
           audioStateRef.current.sourceAudio.pause();
@@ -341,7 +424,9 @@ export const useProximityAudio = () => {
 
         audioStateRef.current.destinationAudio.play()
           .then(() => {
-            console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Destination audio (proximity)');
+            if (DEBUG_PROXIMITY_AUDIO) {
+              console.log('[ProximityAudio] ✅ PLAYBACK STARTED: Destination audio (proximity)');
+            }
           })
           .catch((error) => {
             console.error('[ProximityAudio] ❌ PLAYBACK FAILED: Destination audio (proximity):', error);
@@ -350,7 +435,9 @@ export const useProximityAudio = () => {
         audioStateRef.current.currentlyPlaying = 'destination';
         setKeyboardControlActive(null);
       } else if (!isInsideDestination && audioStateRef.current.destinationAudio && audioStateRef.current.currentlyPlaying === 'destination') {
-        console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Destination audio (exited cuboid)');
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ⏸️ TRIGGERING PAUSE: Destination audio (exited cuboid)');
+        }
         audioStateRef.current.destinationAudio.pause();
         
         audioStateRef.current.currentlyPlaying = null;
@@ -361,13 +448,15 @@ export const useProximityAudio = () => {
 
   }, [position, sourceLocation, destinationLocation, isStreetViewLoaded, isAudioReady]);
 
-  console.log('[ProximityAudio] 🔄 Hook render complete, returning state:', {
-    isAudioReady,
-    isInsideSource: audioStateRef.current.isSourceInside,
-    isInsideDestination: audioStateRef.current.isDestinationInside,
-    currentlyPlaying: audioStateRef.current.currentlyPlaying,
-    keyboardControlActive,
-  });
+  if (DEBUG_PROXIMITY_AUDIO) {
+    console.log('[ProximityAudio] 🔄 Hook render complete, returning state:', {
+      isAudioReady,
+      isInsideSource: audioStateRef.current.isSourceInside,
+      isInsideDestination: audioStateRef.current.isDestinationInside,
+      currentlyPlaying: audioStateRef.current.currentlyPlaying,
+      keyboardControlActive,
+    });
+  }
 
   return {
     isAudioReady,
