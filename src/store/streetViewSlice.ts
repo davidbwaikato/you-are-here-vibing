@@ -129,30 +129,52 @@ const streetViewSlice = createSlice({
       console.log('[Redux Reducer] updateSourceEnhancedDescription called with length:', action.payload.length);
       if (state.sourceDetails) {
         state.sourceDetails.enhancedDescription = action.payload;
-        console.log('[Redux Reducer] Source enhanced description updated');
+        console.log('[Redux Reducer] ✅ Source enhanced description updated');
+      } else {
+        console.error('[Redux Reducer] ❌ Cannot update source description - sourceDetails is null!');
       }
     },
     updateDestinationEnhancedDescription: (state, action: PayloadAction<string>) => {
       console.log('[Redux Reducer] updateDestinationEnhancedDescription called with length:', action.payload.length);
       if (state.destinationDetails) {
         state.destinationDetails.enhancedDescription = action.payload;
-        console.log('[Redux Reducer] Destination enhanced description updated');
+        console.log('[Redux Reducer] ✅ Destination enhanced description updated');
+      } else {
+        console.error('[Redux Reducer] ❌ Cannot update destination description - destinationDetails is null!');
       }
     },
     updateSourceAudio: (state, action: PayloadAction<{ audioUrl: string; audioFilename: string }>) => {
-      console.log('[Redux Reducer] updateSourceAudio called with:', action.payload);
+      console.log('[Redux Reducer] updateSourceAudio called with:', {
+        audioUrl: action.payload.audioUrl.substring(0, 50) + '...',
+        audioFilename: action.payload.audioFilename,
+      });
       if (state.sourceDetails) {
         state.sourceDetails.audioUrl = action.payload.audioUrl;
         state.sourceDetails.audioFilename = action.payload.audioFilename;
-        console.log('[Redux Reducer] Source audio updated');
+        console.log('[Redux Reducer] ✅ Source audio updated successfully');
+        console.log('[Redux Reducer] 📊 Current sourceDetails:', {
+          hasAudioUrl: !!state.sourceDetails.audioUrl,
+          audioFilename: state.sourceDetails.audioFilename,
+        });
+      } else {
+        console.error('[Redux Reducer] ❌ Cannot update source audio - sourceDetails is null!');
       }
     },
     updateDestinationAudio: (state, action: PayloadAction<{ audioUrl: string; audioFilename: string }>) => {
-      console.log('[Redux Reducer] updateDestinationAudio called with:', action.payload);
+      console.log('[Redux Reducer] updateDestinationAudio called with:', {
+        audioUrl: action.payload.audioUrl.substring(0, 50) + '...',
+        audioFilename: action.payload.audioFilename,
+      });
       if (state.destinationDetails) {
         state.destinationDetails.audioUrl = action.payload.audioUrl;
         state.destinationDetails.audioFilename = action.payload.audioFilename;
-        console.log('[Redux Reducer] Destination audio updated');
+        console.log('[Redux Reducer] ✅ Destination audio updated successfully');
+        console.log('[Redux Reducer] 📊 Current destinationDetails:', {
+          hasAudioUrl: !!state.destinationDetails.audioUrl,
+          audioFilename: state.destinationDetails.audioFilename,
+        });
+      } else {
+        console.error('[Redux Reducer] ❌ Cannot update destination audio - destinationDetails is null!');
       }
     },
     setRoutePolyline: (state, action: PayloadAction<LatLng[]>) => {
@@ -187,17 +209,7 @@ const streetViewSlice = createSlice({
       state.destinationDetails = null;
       state.selectedMarkerIndex = 0;
       state.isFistTrackingActive = false;
-      console.log('[Redux Reducer] Route cleared:', {
-        routePolyline: state.routePolyline.length,
-        sourceLocation: state.sourceLocation,
-        destinationLocation: state.destinationLocation,
-        sourceAddress: state.sourceAddress,
-        destinationAddress: state.destinationAddress,
-        sourceDetails: state.sourceDetails,
-        destinationDetails: state.destinationDetails,
-        selectedMarkerIndex: state.selectedMarkerIndex,
-        isFistTrackingActive: state.isFistTrackingActive,
-      });
+      console.log('[Redux Reducer] Route cleared');
     },
   },
 });

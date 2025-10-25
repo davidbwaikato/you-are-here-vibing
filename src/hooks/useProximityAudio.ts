@@ -4,7 +4,7 @@ import { RootState } from '@/store/store';
 import { isUserInsideLocationCuboid } from '@/utils/proximityDetection';
 
 // Debug flag to control console logging
-const DEBUG_PROXIMITY_AUDIO = false;
+const DEBUG_PROXIMITY_AUDIO = true;
 
 interface AudioState {
   sourceAudio: HTMLAudioElement | null;
@@ -43,6 +43,7 @@ export const useProximityAudio = () => {
 
   const [isAudioReady, setIsAudioReady] = useState(false);
   const [keyboardControlActive, setKeyboardControlActive] = useState<'source' | 'destination' | null>(null);
+  const hasInitializedAudio = useRef(false);
 
   // Get data from Redux store
   const { 
@@ -53,6 +54,22 @@ export const useProximityAudio = () => {
     destinationDetails,
     isLoaded: isStreetViewLoaded,
   } = useSelector((state: RootState) => state.streetView);
+
+  // Debug: Log Redux state changes
+  useEffect(() => {
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] 📊 Redux state update:', {
+        isStreetViewLoaded,
+        hasSourceDetails: !!sourceDetails,
+        hasDestinationDetails: !!destinationDetails,
+        hasSourceAudio: !!sourceDetails?.audioUrl,
+        hasDestinationAudio: !!destinationDetails?.audioUrl,
+        sourceAudioUrl: sourceDetails?.audioUrl?.substring(0, 50),
+        destinationAudioUrl: destinationDetails?.audioUrl?.substring(0, 50),
+        hasInitializedAudio: hasInitializedAudio.current,
+      });
+    }
+  }, [isStreetViewLoaded, sourceDetails, destinationDetails]);
 
   // Toggle source audio playback (keyboard control)
   const toggleSourceAudio = useCallback(() => {
@@ -69,6 +86,13 @@ export const useProximityAudio = () => {
 
     if (DEBUG_PROXIMITY_AUDIO) {
       console.log('[ProximityAudio] 🎹 KEYBOARD CONTROL: Toggle source audio requested');
+      console.log('[ProximityAudio] 🔍 Audio element state:', {
+        paused: audio.paused,
+        readyState: audio.readyState,
+        src: audio.src.substring(0, 50),
+        networkState: audio.networkState,
+        error: audio.error,
+      });
     }
 
     if (audio.paused) {
@@ -94,6 +118,12 @@ export const useProximityAudio = () => {
         })
         .catch((error) => {
           console.error('[ProximityAudio] ❌ PLAYBACK FAILED: Source audio error:', error);
+          console.error('[ProximityAudio] 🔍 Audio element details:', {
+            src: audio.src,
+            readyState: audio.readyState,
+            networkState: audio.networkState,
+            error: audio.error,
+          });
         });
       
       audioStateRef.current.currentlyPlaying = 'source';
@@ -130,6 +160,13 @@ export const useProximityAudio = () => {
 
     if (DEBUG_PROXIMITY_AUDIO) {
       console.log('[ProximityAudio] 🎹 KEYBOARD CONTROL: Toggle destination audio requested');
+      console.log('[ProximityAudio] 🔍 Audio element state:', {
+        paused: audio.paused,
+        readyState: audio.readyState,
+        src: audio.src.substring(0, 50),
+        networkState: audio.networkState,
+        error: audio.error,
+      });
     }
 
     if (audio.paused) {
@@ -155,6 +192,12 @@ export const useProximityAudio = () => {
         })
         .catch((error) => {
           console.error('[ProximityAudio] ❌ PLAYBACK FAILED: Destination audio error:', error);
+          console.error('[ProximityAudio] 🔍 Audio element details:', {
+            src: audio.src,
+            readyState: audio.readyState,
+            networkState: audio.networkState,
+            error: audio.error,
+          });
         });
       
       audioStateRef.current.currentlyPlaying = 'destination';
@@ -182,19 +225,52 @@ export const useProximityAudio = () => {
       console.log('[ProximityAudio] 🎵 Audio initialization effect running...', {
         hasSourceAudio: !!sourceDetails?.audioUrl,
         hasDestinationAudio: !!destinationDetails?.audioUrl,
-        isStreetViewLoaded,
+        hasInitializedAudio: hasInitializedAudio.current,
+        sourceAudioUrl: sourceDetails?.audioUrl?.substring(0, 50),
+        destinationAudioUrl: destinationDetails?.audioUrl?.substring(0, 50),
       });
     }
 
-    if (!isStreetViewLoaded) {
+    // Skip if already initialized
+    if (hasInitializedAudio.current) {
       if (DEBUG_PROXIMITY_AUDIO) {
-        console.log('[ProximityAudio] ⏸️ Street View not loaded yet, waiting...');
+        console.log('[ProximityAudio] ⏭️ Audio already initialized, skipping');
       }
       return;
     }
 
+    // Check if we have audio data
+    const hasAudioData = sourceDetails?.audioUrl || destinationDetails?.audioUrl;
+    if (!hasAudioData) {
+      if (DEBUG_PROXIMITY_AUDIO) {
+        console.log('[ProximityAudio] ⏸️ No audio data available yet, waiting...');
+      }
+      return;
+    }
+
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] ✅ Audio data available, initializing audio elements...');
+    }
+
     let sourceAudioElement: HTMLAudioElement | null = null;
     let destinationAudioElement: HTMLAudioElement | null = null;
+    let sourceAudioReady = false;
+    let destinationAudioReady = false;
+
+    const checkIfBothReady = () => {
+      const sourceNeeded = !!sourceDetails?.audioUrl;
+      const destNeeded = !!destinationDetails?.audioUrl;
+      
+      const sourceOk = !sourceNeeded || sourceAudioReady;
+      const destOk = !destNeeded || destinationAudioReady;
+      
+      if (sourceOk && destOk) {
+        if (DEBUG_PROXIMITY_AUDIO) {
+          console.log('[ProximityAudio] ✅ All audio elements ready, enabling keyboard controls');
+        }
+        setIsAudioReady(true);
+      }
+    };
 
     // Create source audio element
     if (sourceDetails?.audioUrl && !audioStateRef.current.sourceAudio) {
@@ -205,19 +281,32 @@ export const useProximityAudio = () => {
         });
       }
 
-      sourceAudioElement = new Audio(sourceDetails.audioUrl);
+      sourceAudioElement = new Audio();
       sourceAudioElement.preload = 'auto';
+      
+      // CRITICAL FIX: Explicitly set src and wait for canplaythrough
+      sourceAudioElement.src = sourceDetails.audioUrl;
       
       sourceAudioElement.addEventListener('canplaythrough', () => {
         if (DEBUG_PROXIMITY_AUDIO) {
           console.log('[ProximityAudio] ✅ Source audio ready to play');
         }
-        setIsAudioReady(true);
+        sourceAudioReady = true;
+        checkIfBothReady();
       });
 
       sourceAudioElement.addEventListener('error', (e) => {
         console.error('[ProximityAudio] ❌ Source audio error:', e);
+        console.error('[ProximityAudio] 🔍 Audio element details:', {
+          src: sourceAudioElement?.src,
+          readyState: sourceAudioElement?.readyState,
+          networkState: sourceAudioElement?.networkState,
+          error: sourceAudioElement?.error,
+        });
       });
+
+      // CRITICAL FIX: Load the audio explicitly
+      sourceAudioElement.load();
 
       audioStateRef.current.sourceAudio = sourceAudioElement;
     }
@@ -231,41 +320,45 @@ export const useProximityAudio = () => {
         });
       }
 
-      destinationAudioElement = new Audio(destinationDetails.audioUrl);
+      destinationAudioElement = new Audio();
       destinationAudioElement.preload = 'auto';
+      
+      // CRITICAL FIX: Explicitly set src and wait for canplaythrough
+      destinationAudioElement.src = destinationDetails.audioUrl;
       
       destinationAudioElement.addEventListener('canplaythrough', () => {
         if (DEBUG_PROXIMITY_AUDIO) {
           console.log('[ProximityAudio] ✅ Destination audio ready to play');
         }
-        setIsAudioReady(true);
+        destinationAudioReady = true;
+        checkIfBothReady();
       });
 
       destinationAudioElement.addEventListener('error', (e) => {
         console.error('[ProximityAudio] ❌ Destination audio error:', e);
+        console.error('[ProximityAudio] 🔍 Audio element details:', {
+          src: destinationAudioElement?.src,
+          readyState: destinationAudioElement?.readyState,
+          networkState: destinationAudioElement?.networkState,
+          error: destinationAudioElement?.error,
+        });
       });
+
+      // CRITICAL FIX: Load the audio explicitly
+      destinationAudioElement.load();
 
       audioStateRef.current.destinationAudio = destinationAudioElement;
     }
 
-    // Cleanup function
-    return () => {
-      if (sourceAudioElement) {
-        if (DEBUG_PROXIMITY_AUDIO) {
-          console.log('[ProximityAudio] 🧹 Cleaning up source audio element');
-        }
-        sourceAudioElement.pause();
-        sourceAudioElement.src = '';
-      }
-      if (destinationAudioElement) {
-        if (DEBUG_PROXIMITY_AUDIO) {
-          console.log('[ProximityAudio] 🧹 Cleaning up destination audio element');
-        }
-        destinationAudioElement.pause();
-        destinationAudioElement.src = '';
-      }
-    };
-  }, [sourceDetails?.audioUrl, destinationDetails?.audioUrl, isStreetViewLoaded]);
+    // Mark as initialized
+    hasInitializedAudio.current = true;
+    if (DEBUG_PROXIMITY_AUDIO) {
+      console.log('[ProximityAudio] ✅ Audio initialization complete');
+    }
+
+    // CRITICAL FIX: Don't cleanup audio elements - they need to persist!
+    // Cleanup function removed to prevent audio element destruction
+  }, [sourceDetails?.audioUrl, destinationDetails?.audioUrl]);
 
   // Handle keyboard events
   useEffect(() => {

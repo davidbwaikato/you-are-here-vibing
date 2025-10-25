@@ -419,20 +419,32 @@ export const LocationSearchPage = ({
   const handleStartExploration = () => {
     if (!isButtonEnabled) return;
 
-    // Navigate to main app with current locations and start flag
+    console.log('[LocationSearchPage] 🚀 Start Exploration clicked');
+    console.log('[LocationSearchPage] 📍 Source:', sourceLocation);
+    console.log('[LocationSearchPage] 📍 Destination:', destinationLocation);
+
+    // Navigate to preparation phase with current locations and start flag
     const params = new URLSearchParams();
     params.set('src', `${sourceLocation.lat},${sourceLocation.lng}`);
     params.set('dst', `${destinationLocation.lat},${destinationLocation.lng}`);
     params.set('start', 'true'); // Flag to indicate user wants to start
+    
+    console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
+    
     window.location.href = `/?${params.toString()}`;
   };
 
   const handleRouteClick = (route: typeof popularRoutes[0]) => {
-    // Navigate to main app with preset route and start flag
+    console.log('[LocationSearchPage] 🗺️ Popular route clicked:', route);
+    
+    // Navigate to preparation phase with preset route and start flag
     const params = new URLSearchParams();
     params.set('src', `${route.srcCoords.lat},${route.srcCoords.lng}`);
     params.set('dst', `${route.dstCoords.lat},${route.dstCoords.lng}`);
     params.set('start', 'true'); // Flag to indicate user wants to start
+    
+    console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
+    
     window.location.href = `/?${params.toString()}`;
   };
 
