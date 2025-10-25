@@ -259,8 +259,8 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       markerData: selectedMarker,
     });
 
-    // Update Redux state to trigger Street View panorama change
-    console.log('[ThreeJS] 📤 Dispatching setPosition with:', { 
+    // CRITICAL FIX: Dispatch setPosition IMMEDIATELY to trigger geocoding
+    console.log('[ThreeJS] 📤 IMMEDIATELY dispatching setPosition to Redux:', { 
       lat: selectedMarker.lat, 
       lng: selectedMarker.lng 
     });

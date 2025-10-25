@@ -36,6 +36,8 @@ interface StreetViewState {
   } | null;
   sourceAddress: string | null;
   destinationAddress: string | null;
+  currentShortName: string | null;
+  destinationShortName: string | null;
   sourceDetails: LocationDetails | null;
   destinationDetails: LocationDetails | null;
   routePolyline: LatLng[];
@@ -59,6 +61,8 @@ const initialState: StreetViewState = {
   destinationLocation: null,
   sourceAddress: null,
   destinationAddress: null,
+  currentShortName: null,
+  destinationShortName: null,
   sourceDetails: null,
   destinationDetails: null,
   routePolyline: [],
@@ -114,6 +118,16 @@ const streetViewSlice = createSlice({
       console.log('[Redux Reducer] setDestinationAddress called with:', action.payload);
       state.destinationAddress = action.payload;
       console.log('[Redux Reducer] New destinationAddress state:', state.destinationAddress);
+    },
+    setCurrentShortName: (state, action: PayloadAction<string | null>) => {
+      console.log('[Redux Reducer] setCurrentShortName called with:', action.payload);
+      state.currentShortName = action.payload;
+      console.log('[Redux Reducer] New currentShortName state:', state.currentShortName);
+    },
+    setDestinationShortName: (state, action: PayloadAction<string | null>) => {
+      console.log('[Redux Reducer] setDestinationShortName called with:', action.payload);
+      state.destinationShortName = action.payload;
+      console.log('[Redux Reducer] New destinationShortName state:', state.destinationShortName);
     },
     setSourceDetails: (state, action: PayloadAction<LocationDetails | null>) => {
       console.log('[Redux Reducer] setSourceDetails called with:', action.payload);
@@ -205,6 +219,8 @@ const streetViewSlice = createSlice({
       state.destinationLocation = null;
       state.sourceAddress = null;
       state.destinationAddress = null;
+      state.currentShortName = null;
+      state.destinationShortName = null;
       state.sourceDetails = null;
       state.destinationDetails = null;
       state.selectedMarkerIndex = 0;
@@ -224,6 +240,8 @@ export const {
   setDestinationLocation,
   setSourceAddress,
   setDestinationAddress,
+  setCurrentShortName,
+  setDestinationShortName,
   setSourceDetails,
   setDestinationDetails,
   updateSourceEnhancedDescription,

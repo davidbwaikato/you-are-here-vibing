@@ -4,7 +4,7 @@ import { RootState } from '@/store/store';
 import { isUserInsideLocationCuboid } from '@/utils/proximityDetection';
 
 // Debug flag to control console logging
-const DEBUG_PROXIMITY_AUDIO = true;
+const DEBUG_PROXIMITY_AUDIO = false;
 
 interface AudioState {
   sourceAudio: HTMLAudioElement | null;

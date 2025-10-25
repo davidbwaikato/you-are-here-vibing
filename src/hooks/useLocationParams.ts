@@ -1,37 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
-import {
-  setSourceLocation,
-  setDestinationLocation,
-  setSourceAddress,
+import { 
+  setSourceLocation, 
+  setDestinationLocation, 
+  setSourceAddress, 
   setDestinationAddress,
-  setSourceDetails,
-  setDestinationDetails,
-} from '../store/streetViewSlice';
+  setCurrentShortName,
+  setDestinationShortName,
+  setPosition 
+} from '@/store/streetViewSlice';
+import { reverseGeocodeLocation } from '@/services/geocoding';
+import type { LocationError } from '@/components/LocationSearchPage';
 
-interface LocationError {
-  attemptedLocation: string;
-  errorMessage: string;
+interface LocationData {
+  lat: number;
+  lng: number;
+  address: string;
+  shortName: string;
 }
 
-interface UseLocationParamsResult {
-  error: string | null;
-  sourceError: LocationError | null;
-  destinationError: LocationError | null;
-  sourceRecognized: boolean;
-  destinationRecognized: boolean;
-  isInitializing: boolean;
-  sourceLocation: { lat: number; lng: number } | null;
-  destinationLocation: { lat: number; lng: number } | null;
-  sourceAddress: string;
-  destinationAddress: string;
-}
-
-/**
- * Hook to parse and validate location parameters from URL
- * PHASE 2 ONLY: Parse and validate locations, NO OpenAI calls
- */
-export const useLocationParams = (isGoogleMapsLoaded: boolean): UseLocationParamsResult => {
+export const useLocationParams = (isGoogleMapsLoaded: boolean) => {
   const dispatch = useDispatch();
   const [error, setError] = useState<string | null>(null);
   const [sourceError, setSourceError] = useState<LocationError | null>(null);
@@ -39,10 +27,10 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean): UseLocationParam
   const [sourceRecognized, setSourceRecognized] = useState(false);
   const [destinationRecognized, setDestinationRecognized] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [sourceLocation, setSourceLocationState] = useState<{ lat: number; lng: number } | null>(null);
-  const [destinationLocation, setDestinationLocationState] = useState<{ lat: number; lng: number } | null>(null);
-  const [sourceAddress, setSourceAddressState] = useState('');
-  const [destinationAddress, setDestinationAddressState] = useState('');
+  const [sourceLocation, setSourceLocationState] = useState<LocationData | null>(null);
+  const [destinationLocation, setDestinationLocationState] = useState<LocationData | null>(null);
+  const [sourceAddress, setSourceAddressState] = useState<string | null>(null);
+  const [destinationAddress, setDestinationAddressState] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isGoogleMapsLoaded) {
@@ -50,37 +38,21 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean): UseLocationParam
       return;
     }
 
-    console.log('[useLocationParams] 🚀 PHASE 2: Parsing location parameters (NO OpenAI calls)');
+    console.log('[useLocationParams] 🚀 Google Maps loaded, processing URL parameters...');
 
     const urlParams = new URLSearchParams(window.location.search);
     const srcParam = urlParams.get('src');
     const dstParam = urlParams.get('dst');
 
-    console.log('[useLocationParams] 📍 URL params:', { srcParam, dstParam });
+    console.log('[useLocationParams] 📍 URL Parameters:', { srcParam, dstParam });
 
-    // If no parameters, use defaults
     if (!srcParam || !dstParam) {
-      console.log('[useLocationParams] ℹ️ No URL params, using defaults');
-      const defaultSource = { lat: 41.9007576, lng: 12.4832866 };
-      const defaultDestination = { lat: 41.9058403, lng: 12.4822975 };
-      
-      setSourceLocationState(defaultSource);
-      setDestinationLocationState(defaultDestination);
-      setSourceAddressState('Trevi Fountain, Rome, Italy');
-      setDestinationAddressState('Spanish Steps, Rome, Italy');
-      
-      dispatch(setSourceLocation(defaultSource));
-      dispatch(setDestinationLocation(defaultDestination));
-      dispatch(setSourceAddress('Trevi Fountain, Rome, Italy'));
-      dispatch(setDestinationAddress('Spanish Steps, Rome, Italy'));
-      
-      setSourceRecognized(true);
-      setDestinationRecognized(true);
+      console.log('[useLocationParams] ⚠️ Missing required parameters');
+      setError('Missing source or destination parameters');
       setIsInitializing(false);
       return;
     }
 
-    // Parse coordinates
     const parseCoordinates = (param: string): { lat: number; lng: number } | null => {
       const parts = param.split(',');
       if (parts.length !== 2) return null;
@@ -89,7 +61,6 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean): UseLocationParam
       const lng = parseFloat(parts[1]);
       
       if (isNaN(lat) || isNaN(lng)) return null;
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
       
       return { lat, lng };
     };
@@ -97,72 +68,138 @@ export const useLocationParams = (isGoogleMapsLoaded: boolean): UseLocationParam
     const srcCoords = parseCoordinates(srcParam);
     const dstCoords = parseCoordinates(dstParam);
 
-    console.log('[useLocationParams] 📐 Parsed coordinates:', { srcCoords, dstCoords });
+    console.log('[useLocationParams] 🗺️ Parsed Coordinates:', { srcCoords, dstCoords });
 
-    // Validate coordinates
-    if (!srcCoords) {
-      console.error('[useLocationParams] ❌ Invalid source coordinates:', srcParam);
-      setSourceError({
-        attemptedLocation: srcParam,
-        errorMessage: 'Invalid coordinates format',
-      });
+    if (!srcCoords || !dstCoords) {
+      console.log('[useLocationParams] ❌ Invalid coordinate format');
+      setError('Invalid coordinate format');
       setIsInitializing(false);
       return;
     }
 
-    if (!dstCoords) {
-      console.error('[useLocationParams] ❌ Invalid destination coordinates:', dstParam);
-      setDestinationError({
-        attemptedLocation: dstParam,
-        errorMessage: 'Invalid coordinates format',
-      });
-      setIsInitializing(false);
-      return;
-    }
+    const geocodeLocation = async (
+      coords: { lat: number; lng: number },
+      locationType: 'source' | 'destination'
+    ): Promise<{ address: string; shortName: string } | null> => {
+      console.log(`[useLocationParams] 🔍 Geocoding ${locationType}:`, coords);
+      
+      try {
+        const result = await reverseGeocodeLocation(coords);
+        
+        console.log(`[useLocationParams] 📍 Geocode result for ${locationType}:`, result);
 
-    // Reverse geocode to get addresses (NO OpenAI calls here!)
-    const geocoder = new google.maps.Geocoder();
+        if ('error' in result) {
+          console.log(`[useLocationParams] ⚠️ Geocoding failed for ${locationType}:`, result.error);
+          
+          if (locationType === 'source') {
+            setSourceError({
+              attemptedLocation: `${coords.lat}, ${coords.lng}`,
+              errorMessage: result.error
+            });
+          } else {
+            setDestinationError({
+              attemptedLocation: `${coords.lat}, ${coords.lng}`,
+              errorMessage: result.error
+            });
+          }
+          
+          return null;
+        }
 
-    Promise.all([
-      geocoder.geocode({ location: srcCoords }),
-      geocoder.geocode({ location: dstCoords }),
-    ])
-      .then(([srcResult, dstResult]) => {
-        console.log('[useLocationParams] 🗺️ Geocoding results:', {
-          source: srcResult.results[0]?.formatted_address,
-          destination: dstResult.results[0]?.formatted_address,
+        console.log(`[useLocationParams] ✅ ${locationType} geocoded:`, {
+          shortName: result.shortName,
+          fullAddress: result.formattedAddress,
         });
 
-        const srcAddr = srcResult.results[0]?.formatted_address || 'Unknown location';
-        const dstAddr = dstResult.results[0]?.formatted_address || 'Unknown location';
+        if (locationType === 'source') {
+          setSourceRecognized(true);
+          setSourceError(null);
+        } else {
+          setDestinationRecognized(true);
+          setDestinationError(null);
+        }
 
-        // Store in local state
-        setSourceLocationState(srcCoords);
-        setDestinationLocationState(dstCoords);
-        setSourceAddressState(srcAddr);
-        setDestinationAddressState(dstAddr);
+        return { address: result.formattedAddress, shortName: result.shortName };
+      } catch (err) {
+        console.error(`[useLocationParams] ❌ Geocoding error for ${locationType}:`, err);
+        
+        if (locationType === 'source') {
+          setSourceError({
+            attemptedLocation: `${coords.lat}, ${coords.lng}`,
+            errorMessage: 'Failed to geocode location'
+          });
+        } else {
+          setDestinationError({
+            attemptedLocation: `${coords.lat}, ${coords.lng}`,
+            errorMessage: 'Failed to geocode location'
+          });
+        }
+        
+        return null;
+      }
+    };
 
-        // Store in Redux (NO OpenAI calls triggered here!)
-        dispatch(setSourceLocation(srcCoords));
-        dispatch(setDestinationLocation(dstCoords));
-        dispatch(setSourceAddress(srcAddr));
-        dispatch(setDestinationAddress(dstAddr));
+    const initializeLocations = async () => {
+      console.log('[useLocationParams] 🔄 Starting location initialization...');
+      
+      const [srcGeocode, dstGeocode] = await Promise.all([
+        geocodeLocation(srcCoords, 'source'),
+        geocodeLocation(dstCoords, 'destination')
+      ]);
 
-        setSourceRecognized(true);
-        setDestinationRecognized(true);
-        setIsInitializing(false);
-
-        console.log('[useLocationParams] ✅ Location parameters parsed successfully (NO OpenAI calls made)');
-      })
-      .catch((error) => {
-        console.error('[useLocationParams] ❌ Geocoding error:', error);
-        setError('Failed to geocode locations');
-        setIsInitializing(false);
+      console.log('[useLocationParams] 📊 Geocoding complete:', {
+        source: srcGeocode,
+        destination: dstGeocode,
       });
+
+      if (srcGeocode) {
+        console.log('[useLocationParams] 💾 Storing source location in Redux:', {
+          coords: srcCoords,
+          address: srcGeocode.address,
+          shortName: srcGeocode.shortName,
+        });
+        
+        dispatch(setSourceLocation(srcCoords));
+        dispatch(setSourceAddress(srcGeocode.address));
+        dispatch(setCurrentShortName(srcGeocode.shortName));
+        dispatch(setPosition(srcCoords));
+        
+        setSourceLocationState({
+          ...srcCoords,
+          address: srcGeocode.address,
+          shortName: srcGeocode.shortName,
+        });
+        setSourceAddressState(srcGeocode.address);
+      }
+
+      if (dstGeocode) {
+        console.log('[useLocationParams] 💾 Storing destination location in Redux:', {
+          coords: dstCoords,
+          address: dstGeocode.address,
+          shortName: dstGeocode.shortName,
+        });
+        
+        dispatch(setDestinationLocation(dstCoords));
+        dispatch(setDestinationAddress(dstGeocode.address));
+        dispatch(setDestinationShortName(dstGeocode.shortName));
+        
+        setDestinationLocationState({
+          ...dstCoords,
+          address: dstGeocode.address,
+          shortName: dstGeocode.shortName,
+        });
+        setDestinationAddressState(dstGeocode.address);
+      }
+
+      console.log('[useLocationParams] ✅ Location initialization complete');
+      setIsInitializing(false);
+    };
+
+    initializeLocations();
   }, [isGoogleMapsLoaded, dispatch]);
 
-  return {
-    error,
+  return { 
+    error, 
     sourceError,
     destinationError,
     sourceRecognized,

@@ -5,6 +5,7 @@ import { setPosition, setPov, setZoom, setLoaded, setDestinationLocation, setSou
 import { MotionTrackingOverlay } from './MotionTrackingOverlay';
 import { LocationOverlay } from './LocationOverlay';
 import { ThreeJsCanvas } from './ThreeJsCanvas';
+import { usePositionGeocoding } from '@/hooks/usePositionGeocoding';
 
 interface StreetViewCanvasProps {
   isGoogleMapsLoaded: boolean;
@@ -35,6 +36,9 @@ export const StreetViewCanvas = ({
   const teleportCallbackRef = useRef<((markerIndex: number) => void) | null>(null);
   
   const { position, pov, zoom } = useSelector((state: RootState) => state.streetView);
+
+  // CRITICAL: Enable position-triggered geocoding
+  usePositionGeocoding();
 
   console.log('[StreetView] Component render - isGoogleMapsLoaded:', isGoogleMapsLoaded, 'isPanoramaReady:', isPanoramaReady);
 
@@ -111,13 +115,13 @@ export const StreetViewCanvas = ({
     console.log('[StreetView] Panorama object created:', panorama);
     panoramaRef.current = panorama;
 
-    // Listen for position changes
+    // Listen for position changes (from user clicking navigation arrows/links)
     panorama.addListener('position_changed', () => {
       const newPosition = panorama.getPosition();
       if (newPosition) {
         const lat = newPosition.lat();
         const lng = newPosition.lng();
-        console.log('[StreetView] 📍 Position changed event:', { lat, lng });
+        console.log('[StreetView] 📍 Position changed event (user navigation):', { lat, lng });
         dispatch(setPosition({ lat, lng }));
       }
     });
@@ -238,12 +242,12 @@ export const StreetViewCanvas = ({
 
   // Callback to trigger teleport from MotionTrackingOverlay
   const handleTeleportToMarker = (markerIndex: number) => {
-    console.log('[StreetView] Teleport request from MotionTrackingOverlay:', markerIndex);
+    console.log('[StreetView] 🚀 Teleport request from MotionTrackingOverlay:', markerIndex);
     if (teleportCallbackRef.current) {
-      console.log('[StreetView] Calling teleport function with index:', markerIndex);
+      console.log('[StreetView] 📞 Calling teleport function with index:', markerIndex);
       teleportCallbackRef.current(markerIndex);
     } else {
-      console.warn('[StreetView] Teleport callback not available yet!');
+      console.warn('[StreetView] ⚠️ Teleport callback not available yet!');
     }
   };
 

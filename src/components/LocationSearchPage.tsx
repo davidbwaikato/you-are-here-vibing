@@ -19,18 +19,21 @@ interface LocationColumnProps {
   paramName: 'src' | 'dst';
   defaultLocation: { name: string; lat: number; lng: number };
   onLocationChange: (location: { lat: number; lng: number; address: string }) => void;
+  onInvalidLocation?: (attemptedText: string) => void;
 }
 
 const GoogleMapEmbed = ({ 
   location, 
   title,
   onLoad,
-  onLocationChange
+  onLocationChange,
+  onInvalidLocation
 }: { 
   location: { lat: number; lng: number }; 
   title: string;
   onLoad: () => void;
   onLocationChange?: (location: { lat: number; lng: number; shortName: string; fullAddress: string }) => void;
+  onInvalidLocation?: (attemptedText: string) => void;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const autocompleteContainerRef = useRef<HTMLDivElement>(null);
@@ -38,6 +41,7 @@ const GoogleMapEmbed = ({
   const markerRef = useRef<google.maps.Marker | null>(null);
   const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
   const mountedRef = useRef(false);
+  const lastValidSelectionRef = useRef<string>(''); // Track last valid selection
 
   useEffect(() => {
     if (!window.google || !window.google.maps) {
@@ -136,6 +140,9 @@ const GoogleMapEmbed = ({
           // 3. fallback
           const fullAddress = place.formattedAddress || place.displayName || 'Unknown location';
 
+          // Store the valid selection text
+          lastValidSelectionRef.current = fullAddress;
+
           console.log('[GoogleMapEmbed] 🗺️ Updating map to:', newLocation);
           console.log('[GoogleMapEmbed] 📝 Short name (status):', shortName);
           console.log('[GoogleMapEmbed] 📍 Full address (showing label):', fullAddress);
@@ -165,6 +172,49 @@ const GoogleMapEmbed = ({
 
       console.log('[GoogleMapEmbed] ✅ Event listener attached to autocomplete element');
 
+      // Add blur event listener to detect invalid locations
+      const handleBlur = () => {
+        console.log('[GoogleMapEmbed] 🔍 Autocomplete blur event fired');
+        
+        // Get the current input value from the autocomplete element
+        const inputElement = autocomplete.querySelector('input');
+        const currentValue = inputElement?.value?.trim() || '';
+        
+        console.log('[GoogleMapEmbed] 📝 Current input value:', currentValue);
+        console.log('[GoogleMapEmbed] 📝 Last valid selection:', lastValidSelectionRef.current);
+
+        // Check if the current value is different from the last valid selection
+        // and is not empty (empty means user cleared it intentionally)
+        if (currentValue && currentValue !== lastValidSelectionRef.current) {
+          console.log('[GoogleMapEmbed] ⚠️ Invalid location detected:', currentValue);
+          
+          // Remove marker from map
+          if (markerRef.current) {
+            console.log('[GoogleMapEmbed] 🗑️ Removing marker from map');
+            markerRef.current.setMap(null);
+          }
+
+          // Notify parent about invalid location
+          if (onInvalidLocation) {
+            console.log('[GoogleMapEmbed] 📢 Notifying parent about invalid location');
+            onInvalidLocation(currentValue);
+          }
+        } else if (!currentValue) {
+          console.log('[GoogleMapEmbed] ℹ️ Input cleared by user');
+        } else {
+          console.log('[GoogleMapEmbed] ✅ Input matches last valid selection');
+        }
+      };
+
+      // Attach blur listener to the input element inside autocomplete
+      const inputElement = autocomplete.querySelector('input');
+      if (inputElement) {
+        inputElement.addEventListener('blur', handleBlur);
+        console.log('[GoogleMapEmbed] ✅ Blur event listener attached to input element');
+      } else {
+        console.warn('[GoogleMapEmbed] ⚠️ Could not find input element in autocomplete');
+      }
+
       mountedRef.current = true;
       onLoad();
     } catch (error) {
@@ -174,6 +224,15 @@ const GoogleMapEmbed = ({
     // Cleanup on unmount only
     return () => {
       console.log('[GoogleMapEmbed] 🧹 Cleaning up map and autocomplete');
+      
+      // Remove blur listener
+      if (autocompleteRef.current) {
+        const inputElement = autocompleteRef.current.querySelector('input');
+        if (inputElement) {
+          inputElement.removeEventListener('blur', handleBlur);
+        }
+      }
+
       if (autocompleteRef.current && autocompleteContainerRef.current) {
         try {
           autocompleteContainerRef.current.removeChild(autocompleteRef.current);
@@ -227,13 +286,19 @@ const LocationColumn = ({
   recognizedLocation,
   paramName, 
   defaultLocation,
-  onLocationChange
+  onLocationChange,
+  onInvalidLocation
 }: LocationColumnProps) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(recognizedLocation || defaultLocation);
   
   // Track if user has selected a valid location (overrides error state)
   const [hasValidSelection, setHasValidSelection] = useState(!hasError);
+  
+  // Track invalid location state
+  const [invalidLocationText, setInvalidLocationText] = useState<string | null>(
+    hasError ? attemptedLocation : null
+  );
   
   // Separate state for status message (short name) and "Show:" label (full address)
   const [statusDisplayName, setStatusDisplayName] = useState<string>(
@@ -254,6 +319,7 @@ const LocationColumn = ({
     
     // Mark that user has selected a valid location (clears error state)
     setHasValidSelection(true);
+    setInvalidLocationText(null);
     
     // Update map location
     setCurrentLocation({
@@ -276,8 +342,21 @@ const LocationColumn = ({
     });
   };
 
+  const handleInvalidLocation = (attemptedText: string) => {
+    console.log('[LocationColumn] ⚠️ Invalid location detected:', attemptedText);
+    
+    // Mark location as invalid
+    setHasValidSelection(false);
+    setInvalidLocationText(attemptedText);
+    
+    // Notify parent if callback provided
+    if (onInvalidLocation) {
+      onInvalidLocation(attemptedText);
+    }
+  };
+
   // Determine if we should show error or success message
-  const showError = hasError && !hasValidSelection;
+  const showError = (hasError || !hasValidSelection) && invalidLocationText;
 
   return (
     <div className="flex-1 lg:min-w-0 space-y-6">
@@ -293,7 +372,7 @@ const LocationColumn = ({
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 shadow-sm min-h-[80px] flex items-center justify-center">
         {showError ? (
           <p className="text-slate-600 text-sm font-light text-center break-words">
-            <span className="text-red-500 font-medium">✗</span> Sorry, we couldn't find: <span className="font-medium text-slate-800">{attemptedLocation}</span>
+            <span className="text-red-500 font-medium">✗</span> Sorry, we couldn't find: <span className="font-medium text-slate-800">{invalidLocationText}</span>
           </p>
         ) : (
           <p className="text-slate-700 text-sm font-light text-center break-words">
@@ -324,6 +403,7 @@ const LocationColumn = ({
             title={showPlaceMarker ? recognizedLocation!.address : defaultLocation.name}
             onLoad={() => setMapLoaded(true)}
             onLocationChange={handleLocationChange}
+            onInvalidLocation={handleInvalidLocation}
           />
         </div>
 
@@ -382,9 +462,13 @@ export const LocationSearchPage = ({
   // Track current locations for both columns
   const [sourceLocation, setSourceLocation] = useState(getInitialSourceLocation());
   const [destinationLocation, setDestinationLocation] = useState(getInitialDestinationLocation());
+  
+  // Track invalid location states
+  const [sourceInvalid, setSourceInvalid] = useState(!!sourceError);
+  const [destinationInvalid, setDestinationInvalid] = useState(!!destinationError);
 
   // Check if both locations are valid (button should be enabled)
-  const isButtonEnabled = !sourceError && !destinationError;
+  const isButtonEnabled = !sourceError && !destinationError && !sourceInvalid && !destinationInvalid;
 
   // Popular walking routes with sensible distances
   const popularRoutes = [
@@ -462,6 +546,26 @@ export const LocationSearchPage = ({
     window.location.href = `/?${params.toString()}`;
   };
 
+  const handleSourceLocationChange = (loc: { lat: number; lng: number; address: string }) => {
+    setSourceLocation({ name: loc.address, lat: loc.lat, lng: loc.lng });
+    setSourceInvalid(false);
+  };
+
+  const handleDestinationLocationChange = (loc: { lat: number; lng: number; address: string }) => {
+    setDestinationLocation({ name: loc.address, lat: loc.lat, lng: loc.lng });
+    setDestinationInvalid(false);
+  };
+
+  const handleSourceInvalid = (attemptedText: string) => {
+    console.log('[LocationSearchPage] ⚠️ Source location invalid:', attemptedText);
+    setSourceInvalid(true);
+  };
+
+  const handleDestinationInvalid = (attemptedText: string) => {
+    console.log('[LocationSearchPage] ⚠️ Destination location invalid:', attemptedText);
+    setDestinationInvalid(true);
+  };
+
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8 w-full">
@@ -480,7 +584,7 @@ export const LocationSearchPage = ({
 
         {/* Main Heading */}
         <h1 className="text-5xl font-light tracking-tight text-slate-900 text-center mb-12">
-          {sourceError || destinationError ? (
+          {sourceError || destinationError || sourceInvalid || destinationInvalid ? (
             <>Let's Find <span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Your Location</span></>
           ) : (
             <>Review <span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Your Locations</span></>
@@ -498,7 +602,8 @@ export const LocationSearchPage = ({
               recognizedLocation={!sourceError && srcParam ? undefined : undefined}
               paramName="src"
               defaultLocation={defaultSourceLocation}
-              onLocationChange={(loc) => setSourceLocation({ name: loc.address, lat: loc.lat, lng: loc.lng })}
+              onLocationChange={handleSourceLocationChange}
+              onInvalidLocation={handleSourceInvalid}
             />
           </div>
 
@@ -514,7 +619,8 @@ export const LocationSearchPage = ({
               recognizedLocation={!destinationError && dstParam ? undefined : undefined}
               paramName="dst"
               defaultLocation={defaultDestinationLocation}
-              onLocationChange={(loc) => setDestinationLocation({ name: loc.address, lat: loc.lat, lng: loc.lng })}
+              onLocationChange={handleDestinationLocationChange}
+              onInvalidLocation={handleDestinationInvalid}
             />
           </div>
         </div>

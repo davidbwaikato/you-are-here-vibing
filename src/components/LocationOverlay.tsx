@@ -3,12 +3,17 @@ import { RootState } from '@/store/store';
 import { MapPin, Navigation } from 'lucide-react';
 
 export const LocationOverlay = () => {
-  const { sourceAddress, destinationAddress } = useSelector((state: RootState) => state.streetView);
+  const { currentShortName, destinationShortName } = useSelector((state: RootState) => state.streetView);
+
+  console.log('[LocationOverlay] 📍 Rendering with:', {
+    currentShortName,
+    destinationShortName,
+  });
 
   return (
     <>
       {/* Current Location - Bottom Left */}
-      {sourceAddress && (
+      {currentShortName && (
         <div 
           className="z-50 pointer-events-none"
           style={{
@@ -25,7 +30,7 @@ export const LocationOverlay = () => {
                 </div>
               </div>
               <div className="text-sm font-light text-slate-900">
-                <span className="font-medium">Current:</span> {sourceAddress}
+                <span className="font-medium">Current:</span> {currentShortName}
               </div>
             </div>
           </div>
@@ -33,7 +38,7 @@ export const LocationOverlay = () => {
       )}
 
       {/* Destination Location - Bottom Right */}
-      {destinationAddress && (
+      {destinationShortName && (
         <div 
           className="z-50 pointer-events-none"
           style={{
@@ -50,7 +55,7 @@ export const LocationOverlay = () => {
                 </div>
               </div>
               <div className="text-sm font-light text-slate-900">
-                <span className="font-medium">Destination:</span> {destinationAddress}
+                <span className="font-medium">Destination:</span> {destinationShortName}
               </div>
             </div>
           </div>
