@@ -86,10 +86,14 @@ const GoogleMapEmbed = ({
 
       // Create PlaceAutocompleteElement
       const autocomplete = new google.maps.places.PlaceAutocompleteElement();
+      autocomplete.style.border = '1px solid black';
+      // CRITICAL: Set high z-index to appear above all other elements
+      autocomplete.style.position = 'relative';
+      autocomplete.style.zIndex = '9999';
       autocompleteContainerRef.current.appendChild(autocomplete);
       autocompleteRef.current = autocomplete;
 
-      console.log('[GoogleMapEmbed] Autocomplete element created, attaching event listener...');
+      console.log('[GoogleMapEmbed] Autocomplete element created with z-index 9999');
 
       // Use the correct event name and structure from Google's documentation
       autocomplete.addEventListener('gmp-select', async ({ placePrediction }: any) => {
@@ -122,11 +126,19 @@ const GoogleMapEmbed = ({
             lng: place.location.lng(),
           };
 
-          // Prioritize displayName for short version, fallback to formattedAddress
+          // CRITICAL: Prioritize MORE DETAILED text for both fields
+          // formattedAddress is typically more detailed than displayName
           const shortName = place.displayName || place.formattedAddress || 'Unknown location';
+          
+          // PRIORITY ORDER for "Showing:" label (most detailed first):
+          // 1. formattedAddress (full address with postal code, country, etc.)
+          // 2. displayName (shorter name)
+          // 3. fallback
           const fullAddress = place.formattedAddress || place.displayName || 'Unknown location';
 
-          console.log('[GoogleMapEmbed] 🗺️ Updating map to:', newLocation, 'Short:', shortName, 'Full:', fullAddress);
+          console.log('[GoogleMapEmbed] 🗺️ Updating map to:', newLocation);
+          console.log('[GoogleMapEmbed] 📝 Short name (status):', shortName);
+          console.log('[GoogleMapEmbed] 📍 Full address (showing label):', fullAddress);
 
           // Update map and marker
           map.setCenter(newLocation);
@@ -199,10 +211,10 @@ const GoogleMapEmbed = ({
         className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 bg-slate-100"
       />
       
-      {/* Autocomplete Container */}
+      {/* Autocomplete Container - High z-index to appear above button */}
       <div 
         ref={autocompleteContainerRef}
-        className="w-full"
+        className="w-full relative z-[9999]"
       />
     </div>
   );
@@ -236,7 +248,9 @@ const LocationColumn = ({
   const showPlaceMarker = !!recognizedLocation;
 
   const handleLocationChange = (newLocation: { lat: number; lng: number; shortName: string; fullAddress: string }) => {
-    console.log('[LocationColumn] 📍 Location changed - Short:', newLocation.shortName, 'Full:', newLocation.fullAddress);
+    console.log('[LocationColumn] 📍 Location changed');
+    console.log('[LocationColumn] 📝 Short name (for status):', newLocation.shortName);
+    console.log('[LocationColumn] 📍 Full address (for "Showing:" label):', newLocation.fullAddress);
     
     // Mark that user has selected a valid location (clears error state)
     setHasValidSelection(true);
@@ -251,7 +265,7 @@ const LocationColumn = ({
     // Update status message with SHORT name
     setStatusDisplayName(newLocation.shortName);
     
-    // Update "Show:" label with FULL address
+    // Update "Showing:" label with FULL address (most detailed)
     setShowLabelAddress(newLocation.fullAddress);
     
     // Notify parent with full address for navigation
@@ -288,8 +302,8 @@ const LocationColumn = ({
         )}
       </div>
 
-      {/* Google Maps Section */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 shadow-sm">
+      {/* Google Maps Section - Relative positioning for z-index context */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 shadow-sm relative z-10">
         <p className="text-slate-700 text-sm font-medium mb-4">
           Search for a location:
         </p>
@@ -313,7 +327,7 @@ const LocationColumn = ({
           />
         </div>
 
-        {/* Map Caption - Shows FULL ADDRESS */}
+        {/* Map Caption - Shows FULL ADDRESS (most detailed) */}
         <p className="text-slate-500 text-xs mt-3 text-center font-light">
           Showing: {showLabelAddress}
         </p>
@@ -501,7 +515,7 @@ export const LocationSearchPage = ({
           />
         </div>
 
-        {/* Start Exploration Button - Full Width of Columns Above */}
+        {/* Start Exploration Button - Lower z-index than autocomplete */}
         <button
           onClick={handleStartExploration}
           disabled={!isButtonEnabled}
@@ -511,7 +525,7 @@ export const LocationSearchPage = ({
               : 'bg-gradient-to-r from-slate-300 to-slate-400 cursor-not-allowed'
           } text-white font-medium py-6 px-8 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 transform ${
             isButtonEnabled ? 'hover:scale-[1.01]' : ''
-          } mb-12`}
+          } mb-12 relative z-0`}
         >
           {isButtonEnabled && (
             <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
