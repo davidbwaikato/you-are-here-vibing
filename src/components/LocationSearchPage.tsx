@@ -280,7 +280,7 @@ const LocationColumn = ({
   const showError = hasError && !hasValidSelection;
 
   return (
-    <div className="flex-1 space-y-6">
+    <div className="flex-1 lg:min-w-0 space-y-6">
       {/* Column Header */}
       <div className="text-center">
         <h2 className="text-2xl font-medium text-slate-800 mb-2">
@@ -292,11 +292,11 @@ const LocationColumn = ({
       {/* Compact Status Message - Single Line - Updates with SHORT NAME */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 shadow-sm min-h-[80px] flex items-center justify-center">
         {showError ? (
-          <p className="text-slate-600 text-sm font-light text-center">
+          <p className="text-slate-600 text-sm font-light text-center break-words">
             <span className="text-red-500 font-medium">✗</span> Sorry, we couldn't find: <span className="font-medium text-slate-800">{attemptedLocation}</span>
           </p>
         ) : (
-          <p className="text-slate-700 text-sm font-light text-center">
+          <p className="text-slate-700 text-sm font-light text-center break-words">
             <span className="text-green-600 font-medium">✓</span> Location recognized: <span className="font-medium text-slate-800">{statusDisplayName}</span>
           </p>
         )}
@@ -327,8 +327,8 @@ const LocationColumn = ({
           />
         </div>
 
-        {/* Map Caption - Shows FULL ADDRESS (most detailed) */}
-        <p className="text-slate-500 text-xs mt-3 text-center font-light">
+        {/* Map Caption - Shows FULL ADDRESS (most detailed) - with text wrapping */}
+        <p className="text-slate-500 text-xs mt-3 text-center font-light break-words">
           Showing: {showLabelAddress}
         </p>
       </div>
@@ -487,32 +487,36 @@ export const LocationSearchPage = ({
           )}
         </h1>
 
-        {/* Two Column Layout - ALWAYS SHOW BOTH */}
-        <div className="flex flex-col lg:flex-row gap-8 mb-8">
-          {/* Source Location Column - ALWAYS SHOWN */}
-          <LocationColumn
-            title="Starting Point"
-            hasError={!!sourceError}
-            attemptedLocation={sourceError?.attemptedLocation}
-            recognizedLocation={!sourceError && srcParam ? undefined : undefined}
-            paramName="src"
-            defaultLocation={defaultSourceLocation}
-            onLocationChange={(loc) => setSourceLocation({ name: loc.address, lat: loc.lat, lng: loc.lng })}
-          />
+        {/* Two Column Layout - STRICT 50/50 WIDTH CONTROL */}
+        <div className="flex flex-col lg:flex-row gap-8 mb-8 lg:items-start">
+          {/* Source Location Column - CAPPED AT 50% WIDTH IN HORIZONTAL LAYOUT */}
+          <div className="w-full lg:w-1/2 lg:max-w-[50%] flex-shrink-0">
+            <LocationColumn
+              title="Starting Point"
+              hasError={!!sourceError}
+              attemptedLocation={sourceError?.attemptedLocation}
+              recognizedLocation={!sourceError && srcParam ? undefined : undefined}
+              paramName="src"
+              defaultLocation={defaultSourceLocation}
+              onLocationChange={(loc) => setSourceLocation({ name: loc.address, lat: loc.lat, lng: loc.lng })}
+            />
+          </div>
 
           {/* Divider - ALWAYS SHOWN */}
-          <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
+          <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent flex-shrink-0" />
 
-          {/* Destination Location Column - ALWAYS SHOWN */}
-          <LocationColumn
-            title="Destination"
-            hasError={!!destinationError}
-            attemptedLocation={destinationError?.attemptedLocation}
-            recognizedLocation={!destinationError && dstParam ? undefined : undefined}
-            paramName="dst"
-            defaultLocation={defaultDestinationLocation}
-            onLocationChange={(loc) => setDestinationLocation({ name: loc.address, lat: loc.lat, lng: loc.lng })}
-          />
+          {/* Destination Location Column - CAPPED AT 50% WIDTH IN HORIZONTAL LAYOUT */}
+          <div className="w-full lg:w-1/2 lg:max-w-[50%] flex-shrink-0">
+            <LocationColumn
+              title="Destination"
+              hasError={!!destinationError}
+              attemptedLocation={destinationError?.attemptedLocation}
+              recognizedLocation={!destinationError && dstParam ? undefined : undefined}
+              paramName="dst"
+              defaultLocation={defaultDestinationLocation}
+              onLocationChange={(loc) => setDestinationLocation({ name: loc.address, lat: loc.lat, lng: loc.lng })}
+            />
+          </div>
         </div>
 
         {/* Start Exploration Button - Lower z-index than autocomplete */}
