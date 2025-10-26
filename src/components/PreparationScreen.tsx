@@ -86,7 +86,7 @@ export const PreparationScreen = ({
         // Step 1: Generate enhanced descriptions
         console.log('[PreparationScreen] 🤖 Step 1: Generating enhanced descriptions via OpenAI...');
         setCurrentStep('generating-descriptions');
-        setProgress(5);
+        setProgress(5); // Fake a small value to start off with
 
         // Generate source description
         const sourceResult = await generateEnhancedDescription(
@@ -94,13 +94,14 @@ export const PreparationScreen = ({
           `A location at ${sourceAddress}`,
           ['tourist_attraction', 'point_of_interest']
         );
-
+				
         if ('enhancedDescription' in sourceResult) {
           console.log('[PreparationScreen] ✅ Source description generated');
           dispatch(updateSourceEnhancedDescription(sourceResult.enhancedDescription));
         } else {
           console.warn('[PreparationScreen] ⚠️ Source description generation failed:', sourceResult.error);
         }
+				setProgress(15);
 
         // Generate destination description
         const destResult = await generateEnhancedDescription(
@@ -143,7 +144,9 @@ export const PreparationScreen = ({
             console.warn('[PreparationScreen] ⚠️ Source audio synthesis failed:', sourceAudioResult.error);
           }
         }
-
+				//setProgress(30);
+				setProgress(50);
+				
         // Synthesize destination audio using Redux voice setting
         if ('enhancedDescription' in destResult) {
           const destAudioResult = await synthesizeTextToSpeech(
@@ -166,16 +169,19 @@ export const PreparationScreen = ({
           }
         }
 
+				/* Not currently doing anything -- logic in StreetViewCanvas still fit for purpose?
         // Step 3: Establish panorama
         console.log('[PreparationScreen] 📸 Step 3: Establishing panorama location and heading...');
         setCurrentStep('establishing-panorama');
         setProgress(40);
         await new Promise(resolve => setTimeout(resolve, 500));
-
+				*/
+				
         // Step 4: Calculate route
         console.log('[PreparationScreen] 🗺️ Step 4: Calculating route between locations...');
         setCurrentStep('calculating-route');
-        setProgress(60);
+        //setProgress(60);
+        setProgress(80);
 
         if (sourceLocation && destinationLocation) {
           console.log('[PreparationScreen] 📡 Calling fetchWalkingRoute...');
@@ -196,7 +202,7 @@ export const PreparationScreen = ({
               polylinePoints: routeResult.decodedPolyline.length,
             });
 
-            // Dispatch route data to Redux store
+            // Dispatch route data to Redux store 
             console.log('[PreparationScreen] 📊 Dispatching route polyline to Redux store...');
             dispatch(setRoutePolyline(routeResult.decodedPolyline));
             console.log('[PreparationScreen] ✅ Route data stored in Redux');
@@ -205,18 +211,21 @@ export const PreparationScreen = ({
           console.warn('[PreparationScreen] ⚠️ Missing source or destination location, skipping route calculation');
         }
 
+				/* not currentlt doing anything! -- logic in StreetViewCanvas still fit for purpose?
         // Step 5: Calculate points
         console.log('[PreparationScreen] 📐 Step 5: Calculating interpolated points along route...');
         setCurrentStep('calculating-points');
         setProgress(80);
         await new Promise(resolve => setTimeout(resolve, 500));
-
+				*/
+				/* Not currently doing anything -- logic in StreetViewCanvas still fit for purpose?
         // Step 6: Calculate markers
         console.log('[PreparationScreen] 📍 Step 6: Calculating visible markers...');
         setCurrentStep('calculating-markers');
         setProgress(90);
-        await new Promise(resolve => setTimeout(resolve, 500));
-
+        await new Promise(resolve => setTimeout(resolve, 2000));
+				*/
+				
         // Complete
         console.log('[PreparationScreen] ✅ Preparation complete!');
         setCurrentStep('complete');
@@ -302,15 +311,15 @@ export const PreparationScreen = ({
     switch (step) {
       case 'generating-descriptions':
       case 'synthesizing-audio':
-        return <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />;
+        return <Loader2 className="w-8 h-8 text-white animate-spin" />;
       case 'establishing-panorama':
-        return <MapPin className="w-8 h-8 text-purple-600 animate-pulse" />;
+        return <MapPin className="w-8 h-8 text-white animate-pulse" />;
       case 'calculating-route':
       case 'calculating-points':
       case 'calculating-markers':
-        return <Route className="w-8 h-8 text-blue-600 animate-pulse" />;
+        return <Route className="w-8 h-8 text-white animate-pulse" />;
       case 'complete':
-        return <MapPin className="w-8 h-8 text-green-600" />;
+        return <MapPin className="w-8 h-8 text-white" />;
     }
   };
 
