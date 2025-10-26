@@ -49,10 +49,26 @@ export const PreparationScreen = ({
   const sourceDetails = useSelector((state: RootState) => state.streetView.sourceDetails);
   const destinationDetails = useSelector((state: RootState) => state.streetView.destinationDetails);
   const ttsVoice = useSelector((state: RootState) => state.streetView.ttsVoice);
+  
+  // Get short names from Redux state
+  const sourceShortName = useSelector((state: RootState) => state.streetView.currentShortName);
+  const destinationShortName = useSelector((state: RootState) => state.streetView.destinationShortName);
+  
   const [isPreparationComplete, setIsPreparationComplete] = useState(false);
 
   // Get Google Maps API key from environment
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  // Determine display names (use short names if available, fallback to addresses)
+  const displaySourceName = sourceShortName || sourceAddress;
+  const displayDestinationName = destinationShortName || destinationAddress;
+
+  console.log('[PreparationScreen] 📝 Display names:', {
+    sourceShortName,
+    destinationShortName,
+    displaySourceName,
+    displayDestinationName,
+  });
 
   useEffect(() => {
     // CRITICAL FIX: Prevent duplicate execution
@@ -360,20 +376,24 @@ export const PreparationScreen = ({
           </p>
         </div>
 
-        {/* Location Info */}
+        {/* Location Info - Using Short Names */}
         <div className="w-full space-y-2 bg-white/50 backdrop-blur-sm rounded-xl p-4 border border-slate-200">
           <div className="flex items-start gap-2">
             <MapPin className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-xs text-slate-500 font-medium">From</p>
-              <p className="text-sm text-slate-700 truncate">{sourceAddress}</p>
+              <p className="text-sm text-slate-700 truncate" title={displaySourceName}>
+                {displaySourceName}
+              </p>
             </div>
           </div>
           <div className="flex items-start gap-2">
             <MapPin className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-xs text-slate-500 font-medium">To</p>
-              <p className="text-sm text-slate-700 truncate">{destinationAddress}</p>
+              <p className="text-sm text-slate-700 truncate" title={displayDestinationName}>
+                {displayDestinationName}
+              </p>
             </div>
           </div>
         </div>
