@@ -1,6 +1,9 @@
 import { MapPin, ArrowRight } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 
+// Debug flag to control console logging
+const DEBUG_LOCATION_SEARCH = false;
+
 export interface LocationError {
   attemptedLocation: string;
   errorMessage: string;
@@ -56,12 +59,16 @@ const GoogleMapEmbed = ({
 
   useEffect(() => {
     if (!window.google || !window.google.maps) {
-      console.warn('[GoogleMapEmbed] Google Maps not loaded yet');
+      if (DEBUG_LOCATION_SEARCH) {
+        console.warn('[GoogleMapEmbed] Google Maps not loaded yet');
+      }
       return;
     }
 
     if (!containerRef.current || !autocompleteContainerRef.current) {
-      console.warn('[GoogleMapEmbed] Container refs not available');
+      if (DEBUG_LOCATION_SEARCH) {
+        console.warn('[GoogleMapEmbed] Container refs not available');
+      }
       return;
     }
 
@@ -73,7 +80,9 @@ const GoogleMapEmbed = ({
           lastLocationRef.current.lng !== location.lng;
         
         if (locationChanged) {
-          console.log('[GoogleMapEmbed] 🔄 External location change detected');
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] 🔄 External location change detected');
+          }
           const newPos = { lat: location.lat, lng: location.lng };
           mapInstanceRef.current.setCenter(newPos);
           markerRef.current.setPosition(newPos);
@@ -85,7 +94,9 @@ const GoogleMapEmbed = ({
       return;
     }
 
-    console.log('[GoogleMapEmbed] Initializing map and autocomplete:', location);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[GoogleMapEmbed] Initializing map and autocomplete:', location);
+    }
 
     try {
       // Create map
@@ -117,7 +128,9 @@ const GoogleMapEmbed = ({
       autocompleteContainerRef.current.appendChild(autocomplete);
       autocompleteRef.current = autocomplete;
 
-      console.log('[GoogleMapEmbed] Autocomplete element created');
+      if (DEBUG_LOCATION_SEARCH) {
+        console.log('[GoogleMapEmbed] Autocomplete element created');
+      }
 
       // ============================================================================
       // MARKER VISIBILITY STATE MANAGEMENT
@@ -125,7 +138,9 @@ const GoogleMapEmbed = ({
 
       // Helper functions for marker visibility
       const hideMarker = () => {
-        console.log('[GoogleMapEmbed] 🙈 Hiding marker (user is editing)');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[GoogleMapEmbed] 🙈 Hiding marker (user is editing)');
+        }
         if (markerRef.current) {
           markerRef.current.setVisible(false);
         }
@@ -133,8 +148,10 @@ const GoogleMapEmbed = ({
       };
 
       const showMarkerAt = (position: google.maps.LatLng, placeName: string, shortName: string) => {
-        console.log('[GoogleMapEmbed] 👁️ Showing marker at:', position.lat(), position.lng());
-        console.log('[GoogleMapEmbed] 📝 Display name:', shortName);
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[GoogleMapEmbed] 👁️ Showing marker at:', position.lat(), position.lng());
+          console.log('[GoogleMapEmbed] 📝 Display name:', shortName);
+        }
         if (markerRef.current && mapInstanceRef.current) {
           markerRef.current.setPosition(position);
           markerRef.current.setTitle(placeName);
@@ -151,7 +168,9 @@ const GoogleMapEmbed = ({
 
       // FOCUS EVENT: Reset edited flag
       const handleFocus = () => {
-        console.log('[GoogleMapEmbed] 🎯 FOCUS: Resetting editedSinceFocus flag');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[GoogleMapEmbed] 🎯 FOCUS: Resetting editedSinceFocus flag');
+        }
         editedSinceFocusRef.current = false;
       };
 
@@ -160,7 +179,9 @@ const GoogleMapEmbed = ({
       // INPUT EVENT: User started typing
       const handleInput = () => {
         if (!editedSinceFocusRef.current) {
-          console.log('[GoogleMapEmbed] ⌨️ INPUT: User started editing, hiding marker');
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] ⌨️ INPUT: User started editing, hiding marker');
+          }
           editedSinceFocusRef.current = true;
           hideMarker();
           
@@ -175,26 +196,34 @@ const GoogleMapEmbed = ({
 
       // GMP-SELECT EVENT: User selected a place
       autocomplete.addEventListener('gmp-select', async ({ placePrediction }: any) => {
-        console.log('[GoogleMapEmbed] ✅ GMP-SELECT: Place selected');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[GoogleMapEmbed] ✅ GMP-SELECT: Place selected');
+        }
 
         try {
           // Convert placePrediction to Place object
           const place = placePrediction.toPlace();
-          console.log('[GoogleMapEmbed] Place object created:', place);
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] Place object created:', place);
+          }
 
           // Fetch place details
           await place.fetchFields({
             fields: ['displayName', 'formattedAddress', 'location']
           });
 
-          console.log('[GoogleMapEmbed] Place details fetched:', {
-            displayName: place.displayName,
-            formattedAddress: place.formattedAddress,
-            location: place.location
-          });
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] Place details fetched:', {
+              displayName: place.displayName,
+              formattedAddress: place.formattedAddress,
+              location: place.location
+            });
+          }
 
           if (!place.location) {
-            console.warn('[GoogleMapEmbed] ⚠️ Selected place has no location');
+            if (DEBUG_LOCATION_SEARCH) {
+              console.warn('[GoogleMapEmbed] ⚠️ Selected place has no location');
+            }
             return;
           }
 
@@ -210,8 +239,10 @@ const GoogleMapEmbed = ({
           const shortName = place.displayName || place.formattedAddress || 'Unknown location';
           const fullAddress = place.formattedAddress || place.displayName || 'Unknown location';
 
-          console.log('[GoogleMapEmbed] 📝 Short name:', shortName);
-          console.log('[GoogleMapEmbed] 📍 Full address:', fullAddress);
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] 📝 Short name:', shortName);
+            console.log('[GoogleMapEmbed] 📍 Full address:', fullAddress);
+          }
 
           // Show marker at selected location with short name
           showMarkerAt(place.location, fullAddress, shortName);
@@ -223,7 +254,9 @@ const GoogleMapEmbed = ({
 
           // Notify parent component
           if (onLocationChange) {
-            console.log('[GoogleMapEmbed] 📢 Notifying parent');
+            if (DEBUG_LOCATION_SEARCH) {
+              console.log('[GoogleMapEmbed] 📢 Notifying parent');
+            }
             onLocationChange({
               lat: newLocation.lat,
               lng: newLocation.lng,
@@ -238,20 +271,28 @@ const GoogleMapEmbed = ({
 
       // BLUR EVENT: User clicked away
       const handleBlur = () => {
-        console.log('[GoogleMapEmbed] 🔍 BLUR: User clicked away');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[GoogleMapEmbed] 🔍 BLUR: User clicked away');
+        }
         
         // If they focused and clicked away without editing, do nothing
         if (!editedSinceFocusRef.current) {
-          console.log('[GoogleMapEmbed] No edits made, keeping current state');
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] No edits made, keeping current state');
+          }
           return;
         }
 
         // If they edited but didn't select a place
-        console.log('[GoogleMapEmbed] User edited but did not select');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[GoogleMapEmbed] User edited but did not select');
+        }
         
         if (committedPlaceRef.current) {
           // Option A (conservative): Revert to last valid place
-          console.log('[GoogleMapEmbed] 🔄 Reverting to last committed place');
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] 🔄 Reverting to last committed place');
+          }
           const lastPlace = committedPlaceRef.current;
           
           if (lastPlace.location) {
@@ -276,7 +317,9 @@ const GoogleMapEmbed = ({
           }
         } else {
           // Option B (strict): Keep hidden until new selection
-          console.log('[GoogleMapEmbed] 🙈 No committed place, keeping marker hidden');
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[GoogleMapEmbed] 🙈 No committed place, keeping marker hidden');
+          }
           hideMarker();
           
           // Notify parent that we're still waiting
@@ -293,7 +336,9 @@ const GoogleMapEmbed = ({
       (autocomplete as any).__inputHandler = handleInput;
       (autocomplete as any).__blurHandler = handleBlur;
 
-      console.log('[GoogleMapEmbed] ✅ All event listeners attached');
+      if (DEBUG_LOCATION_SEARCH) {
+        console.log('[GoogleMapEmbed] ✅ All event listeners attached');
+      }
 
       mountedRef.current = true;
       onLoad();
@@ -303,7 +348,9 @@ const GoogleMapEmbed = ({
 
     // Cleanup on unmount
     return () => {
-      console.log('[GoogleMapEmbed] 🧹 Cleaning up map and autocomplete');
+      if (DEBUG_LOCATION_SEARCH) {
+        console.log('[GoogleMapEmbed] 🧹 Cleaning up map and autocomplete');
+      }
       
       if (autocompleteRef.current) {
         const focusHandler = (autocompleteRef.current as any).__focusHandler;
@@ -325,7 +372,9 @@ const GoogleMapEmbed = ({
         try {
           autocompleteContainerRef.current.removeChild(autocompleteRef.current);
         } catch (e) {
-          console.warn('[GoogleMapEmbed] ⚠️ Error removing autocomplete:', e);
+          if (DEBUG_LOCATION_SEARCH) {
+            console.warn('[GoogleMapEmbed] ⚠️ Error removing autocomplete:', e);
+          }
         }
         autocompleteRef.current = null;
       }
@@ -389,12 +438,14 @@ const LocationColumn = ({
   // Notify parent whenever selection state changes
   useEffect(() => {
     const isWaitingForSelection = isEditing || !markerVisible;
-    console.log('[LocationColumn]', title, '- Selection state:', {
-      isEditing,
-      markerVisible,
-      isWaitingForSelection: isWaitingForSelection,
-      hasValidSelection: !isWaitingForSelection
-    });
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationColumn]', title, '- Selection state:', {
+        isEditing,
+        markerVisible,
+        isWaitingForSelection: isWaitingForSelection,
+        hasValidSelection: !isWaitingForSelection
+      });
+    }
     
     if (onSelectionStateChange) {
       onSelectionStateChange(!isWaitingForSelection);
@@ -406,9 +457,11 @@ const LocationColumn = ({
   const showPlaceMarker = !!recognizedLocation;
 
   const handleLocationChange = (newLocation: { lat: number; lng: number; shortName: string; fullAddress: string }) => {
-    console.log('[LocationColumn] 📍 Location changed');
-    console.log('[LocationColumn] 📝 Short name:', newLocation.shortName);
-    console.log('[LocationColumn] 📍 Full address:', newLocation.fullAddress);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationColumn] 📍 Location changed');
+      console.log('[LocationColumn] 📝 Short name:', newLocation.shortName);
+      console.log('[LocationColumn] 📍 Full address:', newLocation.fullAddress);
+    }
     
     // Mark that user has selected a valid location (clears error state)
     setHasValidSelection(true);
@@ -435,7 +488,9 @@ const LocationColumn = ({
   };
 
   const handleInvalidLocation = (attemptedText: string) => {
-    console.log('[LocationColumn] ⚠️ Invalid location detected:', attemptedText);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationColumn] ⚠️ Invalid location detected:', attemptedText);
+    }
     
     // Mark location as invalid
     setHasValidSelection(false);
@@ -448,7 +503,9 @@ const LocationColumn = ({
   };
 
   const handleEditingStateChange = (editing: boolean) => {
-    console.log('[LocationColumn] ✏️ Editing state changed:', editing);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationColumn] ✏️ Editing state changed:', editing);
+    }
     setIsEditing(editing);
   };
 
@@ -592,32 +649,40 @@ export const LocationSearchPage = ({
     sourceHasValidSelection && 
     destinationHasValidSelection;
 
-  console.log('[LocationSearchPage] Button state:', {
-    sourceError: !!sourceError,
-    destinationError: !!destinationError,
-    sourceInvalid,
-    destinationInvalid,
-    sourceHasValidSelection,
-    destinationHasValidSelection,
-    isButtonEnabled,
-    routeDistance
-  });
+  if (DEBUG_LOCATION_SEARCH) {
+    console.log('[LocationSearchPage] Button state:', {
+      sourceError: !!sourceError,
+      destinationError: !!destinationError,
+      sourceInvalid,
+      destinationInvalid,
+      sourceHasValidSelection,
+      destinationHasValidSelection,
+      isButtonEnabled,
+      routeDistance
+    });
+  }
 
   // Calculate route distance whenever locations change
   useEffect(() => {
     const calculateDistance = async () => {
       if (!sourceLocation || !destinationLocation) {
-        console.log('[LocationSearchPage] ⚠️ Missing locations for distance calculation');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[LocationSearchPage] ⚠️ Missing locations for distance calculation');
+        }
         return;
       }
 
       if (!sourceHasValidSelection || !destinationHasValidSelection) {
-        console.log('[LocationSearchPage] ⚠️ Waiting for valid location selections');
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[LocationSearchPage] ⚠️ Waiting for valid location selections');
+        }
         setRouteDistance(null);
         return;
       }
 
-      console.log('[LocationSearchPage] 📏 Calculating route distance...');
+      if (DEBUG_LOCATION_SEARCH) {
+        console.log('[LocationSearchPage] 📏 Calculating route distance...');
+      }
       setIsCalculatingDistance(true);
 
       try {
@@ -669,11 +734,15 @@ export const LocationSearchPage = ({
         }
 
         const data = await response.json();
-        console.log('[LocationSearchPage] 📊 Routes API response:', data);
+        if (DEBUG_LOCATION_SEARCH) {
+          console.log('[LocationSearchPage] 📊 Routes API response:', data);
+        }
 
         if (data.routes && data.routes.length > 0) {
           const distanceMeters = data.routes[0].distanceMeters;
-          console.log('[LocationSearchPage] 📏 Distance in meters:', distanceMeters);
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[LocationSearchPage] 📏 Distance in meters:', distanceMeters);
+          }
 
           // Format distance
           let formattedDistance: string;
@@ -684,10 +753,14 @@ export const LocationSearchPage = ({
             formattedDistance = `${distanceKm.toFixed(1)}km`;
           }
 
-          console.log('[LocationSearchPage] ✅ Formatted distance:', formattedDistance);
+          if (DEBUG_LOCATION_SEARCH) {
+            console.log('[LocationSearchPage] ✅ Formatted distance:', formattedDistance);
+          }
           setRouteDistance(formattedDistance);
         } else {
-          console.warn('[LocationSearchPage] ⚠️ No routes found in response');
+          if (DEBUG_LOCATION_SEARCH) {
+            console.warn('[LocationSearchPage] ⚠️ No routes found in response');
+          }
           setRouteDistance(null);
         }
       } catch (error) {
@@ -748,9 +821,11 @@ export const LocationSearchPage = ({
   const handleStartExploration = () => {
     if (!isButtonEnabled) return;
 
-    console.log('[LocationSearchPage] 🚀 Start Exploration clicked');
-    console.log('[LocationSearchPage] 📍 Source:', sourceLocation);
-    console.log('[LocationSearchPage] 📍 Destination:', destinationLocation);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] 🚀 Start Exploration clicked');
+      console.log('[LocationSearchPage] 📍 Source:', sourceLocation);
+      console.log('[LocationSearchPage] 📍 Destination:', destinationLocation);
+    }
 
     // Navigate to preparation phase with current locations and start flag
     const params = new URLSearchParams();
@@ -758,13 +833,17 @@ export const LocationSearchPage = ({
     params.set('dst', `${destinationLocation.lat},${destinationLocation.lng}`);
     params.set('start', 'true'); // Flag to indicate user wants to start
     
-    console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
+    }
     
     window.location.href = `/?${params.toString()}`;
   };
 
   const handleRouteClick = (route: typeof popularRoutes[0]) => {
-    console.log('[LocationSearchPage] 🗺️ Popular route clicked:', route);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] 🗺️ Popular route clicked:', route);
+    }
     
     // Navigate to preparation phase with preset route and start flag
     const params = new URLSearchParams();
@@ -772,7 +851,9 @@ export const LocationSearchPage = ({
     params.set('dst', `${route.dstCoords.lat},${route.dstCoords.lng}`);
     params.set('start', 'true'); // Flag to indicate user wants to start
     
-    console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
+    }
     
     window.location.href = `/?${params.toString()}`;
   };
@@ -788,22 +869,30 @@ export const LocationSearchPage = ({
   };
 
   const handleSourceInvalid = (attemptedText: string) => {
-    console.log('[LocationSearchPage] ⚠️ Source location invalid:', attemptedText);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] ⚠️ Source location invalid:', attemptedText);
+    }
     setSourceInvalid(true);
   };
 
   const handleDestinationInvalid = (attemptedText: string) => {
-    console.log('[LocationSearchPage] ⚠️ Destination location invalid:', attemptedText);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] ⚠️ Destination location invalid:', attemptedText);
+    }
     setDestinationInvalid(true);
   };
 
   const handleSourceSelectionStateChange = (hasValidSelection: boolean) => {
-    console.log('[LocationSearchPage] 📍 Source selection state changed:', hasValidSelection);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] 📍 Source selection state changed:', hasValidSelection);
+    }
     setSourceHasValidSelection(hasValidSelection);
   };
 
   const handleDestinationSelectionStateChange = (hasValidSelection: boolean) => {
-    console.log('[LocationSearchPage] 📍 Destination selection state changed:', hasValidSelection);
+    if (DEBUG_LOCATION_SEARCH) {
+      console.log('[LocationSearchPage] 📍 Destination selection state changed:', hasValidSelection);
+    }
     setDestinationHasValidSelection(hasValidSelection);
   };
 

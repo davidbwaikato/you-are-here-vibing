@@ -4,6 +4,7 @@ import { RootState } from '@/store/store';
 import { setPosition, setPov, setZoom, setLoaded } from '@/store/streetViewSlice';
 import { LocationOverlay } from './LocationOverlay';
 import { usePositionGeocoding } from '@/hooks/usePositionGeocoding';
+import { useProximityAudio } from '@/hooks/useProximityAudio';
 
 export const StreetViewScreen = () => {
   const dispatch = useDispatch();
@@ -14,6 +15,9 @@ export const StreetViewScreen = () => {
 
   // Enable position-triggered geocoding
   usePositionGeocoding();
+
+  // Enable proximity-based audio playback
+  useProximityAudio();
 
   useEffect(() => {
     console.log('[StreetViewScreen] 🚀 Initializing Street View...');

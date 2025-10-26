@@ -31,10 +31,15 @@ interface LocationCuboid {
   mesh: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
   type: 'source' | 'destination';
+  location: { lat: number; lng: number };
 }
 
 // Street View eye level is approximately 1.7 meters above ground
 const STREET_VIEW_EYE_LEVEL = 1.7;
+
+// CRITICAL: Arrow height above ground (independent of camera pitch)
+// This ensures arrows always appear at ground level in world space
+const ARROW_GROUND_HEIGHT = -STREET_VIEW_EYE_LEVEL + 0.5; // 0.5m above actual ground
 
 export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProps) => {
   const dispatch = useDispatch();
@@ -156,7 +161,6 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
         const arrowPosition = arrowState.group.position;
         const distance = Math.sqrt(
           arrowPosition.x * arrowPosition.x +
-          arrowPosition.y * arrowPosition.y +
           arrowPosition.z * arrowPosition.z
         );
 
@@ -521,17 +525,17 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       const material = createCuboidMaterial();
       const mesh = new THREE.Mesh(cuboidGeometry, material);
       
-      // Position at ground level (compensate for Street View eye level)
+      // CRITICAL: Position at ground level (compensate for Street View eye level)
       // Street View eye level is at y=0, so ground is at y=-STREET_VIEW_EYE_LEVEL
       // Cuboid height is 10, so center it at ground + half height
       mesh.position.set(
         point3D.x,
-        -STREET_VIEW_EYE_LEVEL + 3, // Ground level + half of cuboid height (10/2 = 5)
+        -STREET_VIEW_EYE_LEVEL + 5, // Ground level + half of cuboid height (10/2 = 5)
         point3D.z
       );
       
       sceneRef.current?.add(mesh);
-      newCuboids.push({ mesh, material, type: 'source' });
+      newCuboids.push({ mesh, material, type: 'source', location: sourceLocation });
       
       console.log('[ThreeJS] ✅ Source cuboid created at:', {
         position: mesh.position,
@@ -553,15 +557,15 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       const material = createCuboidMaterial();
       const mesh = new THREE.Mesh(cuboidGeometry, material);
       
-      // Position at ground level (compensate for Street View eye level)
+      // CRITICAL: Position at ground level (compensate for Street View eye level)
       mesh.position.set(
         point3D.x,
-        -STREET_VIEW_EYE_LEVEL + 3, // Ground level + half of cuboid height (10/2 = 5)
+        -STREET_VIEW_EYE_LEVEL + 5, // Ground level + half of cuboid height (10/2 = 5)
         point3D.z
       );
       
       sceneRef.current?.add(mesh);
-      newCuboids.push({ mesh, material, type: 'destination' });
+      newCuboids.push({ mesh, material, type: 'destination', location: destinationLocation });
       
       console.log('[ThreeJS] ✅ Destination cuboid created at:', {
         position: mesh.position,
@@ -786,7 +790,13 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       arrowGroup.add(cylinder);
       arrowGroup.add(cone);
       
-      arrowGroup.position.set(currentPoint.x, currentPoint.y, currentPoint.z);
+      // CRITICAL FIX: Force arrow to ground level regardless of camera pitch
+      // Use ARROW_GROUND_HEIGHT constant instead of currentPoint.y
+      arrowGroup.position.set(
+        currentPoint.x, 
+        ARROW_GROUND_HEIGHT,  // ← FIXED: Always at ground level
+        currentPoint.z
+      );
       
       const currentScale = 1.0;
       
@@ -875,6 +885,8 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
     const headingRad = THREE.MathUtils.degToRad(pov.heading);
     const pitchRad = THREE.MathUtils.degToRad(pov.pitch);
 
+    // CRITICAL: This rotation is CORRECT - it only affects camera view direction
+    // It does NOT affect the world-space positions of arrows (which are fixed at ground level)
     cameraRef.current.rotation.order = 'YXZ';
     cameraRef.current.rotation.y = -headingRad;
     cameraRef.current.rotation.x = pitchRad;
