@@ -439,7 +439,7 @@ const LocationColumn = ({
   const showError = (hasError || !hasValidSelection) && invalidLocationText;
 
   return (
-    <div className="flex-1 lg:min-w-0 space-y-6">
+    <div className="flex-1 space-y-6">
       {/* Column Header */}
       <div className="text-center">
         <h2 className="text-2xl font-medium text-slate-800 mb-2">
@@ -675,48 +675,45 @@ export const LocationSearchPage = ({
 
         {/* Main Heading */}
         <h1 className="text-5xl font-light tracking-tight text-slate-900 text-center mb-12">
+					<span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">You Are Here:</span>&nbsp; 
           {sourceError || destinationError || sourceInvalid || destinationInvalid ? (
             <>Let's Find <span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Your Location</span></>
           ) : (
-            <>Review <span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Your Locations</span></>
+            <>Review Your Locations</>
           )}
         </h1>
 
-        {/* Two Column Layout - STRICT 50/50 WIDTH CONTROL */}
-        <div className="flex flex-col lg:flex-row gap-8 mb-8 lg:items-start">
-          {/* Source Location Column - CAPPED AT 50% WIDTH IN HORIZONTAL LAYOUT */}
-          <div className="w-full lg:w-1/2 lg:max-w-[50%] flex-shrink-0">
-            <LocationColumn
-              title="Starting Point"
-              hasError={!!sourceError}
-              attemptedLocation={sourceError?.attemptedLocation}
-              recognizedLocation={!sourceError && srcParam ? undefined : undefined}
-              paramName="src"
-              defaultLocation={defaultSourceLocation}
-              onLocationChange={handleSourceLocationChange}
-              onInvalidLocation={handleSourceInvalid}
-            />
-          </div>
+        {/* Two Column Layout */}
+        <div className="flex flex-col lg:flex-row gap-8 mb-8">
+          {/* Source Location Column */}
+          <LocationColumn
+            title="Starting Point"
+            hasError={!!sourceError}
+            attemptedLocation={sourceError?.attemptedLocation}
+            recognizedLocation={!sourceError && srcParam ? undefined : undefined}
+            paramName="src"
+            defaultLocation={defaultSourceLocation}
+            onLocationChange={handleSourceLocationChange}
+            onInvalidLocation={handleSourceInvalid}
+          />
 
-          {/* Divider - ALWAYS SHOWN */}
+          {/* Divider */}
           <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent flex-shrink-0" />
 
-          {/* Destination Location Column - CAPPED AT 50% WIDTH IN HORIZONTAL LAYOUT */}
-          <div className="w-full lg:w-1/2 lg:max-w-[50%] flex-shrink-0">
-            <LocationColumn
-              title="Destination"
-              hasError={!!destinationError}
-              attemptedLocation={destinationError?.attemptedLocation}
-              recognizedLocation={!destinationError && dstParam ? undefined : undefined}
-              paramName="dst"
-              defaultLocation={defaultDestinationLocation}
-              onLocationChange={handleDestinationLocationChange}
-              onInvalidLocation={handleDestinationInvalid}
-            />
-          </div>
+          {/* Destination Location Column */}
+          <LocationColumn
+            title="Destination"
+            hasError={!!destinationError}
+            attemptedLocation={destinationError?.attemptedLocation}
+            recognizedLocation={!destinationError && dstParam ? undefined : undefined}
+            paramName="dst"
+            defaultLocation={defaultDestinationLocation}
+            onLocationChange={handleDestinationLocationChange}
+            onInvalidLocation={handleDestinationInvalid}
+          />
         </div>
 
-        {/* Start Exploration Button - Lower z-index than autocomplete */}
+        {/* Start Exploration Button */}
         <button
           onClick={handleStartExploration}
           disabled={!isButtonEnabled}
@@ -741,7 +738,7 @@ export const LocationSearchPage = ({
           </div>
         </button>
 
-        {/* Popular Routes - Full Width */}
+        {/* Popular Routes */}
         <div className="w-full">
           <p className="text-slate-600 text-sm font-light mb-4 text-center">
             Or explore these popular walking routes:
