@@ -20,6 +20,7 @@ interface LocationColumnProps {
   defaultLocation: { name: string; lat: number; lng: number };
   onLocationChange: (location: { lat: number; lng: number; address: string }) => void;
   onInvalidLocation?: (attemptedText: string) => void;
+  onSelectionStateChange?: (hasValidSelection: boolean) => void;
 }
 
 const GoogleMapEmbed = ({ 
@@ -364,7 +365,8 @@ const LocationColumn = ({
   paramName, 
   defaultLocation,
   onLocationChange,
-  onInvalidLocation
+  onInvalidLocation,
+  onSelectionStateChange
 }: LocationColumnProps) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(recognizedLocation || defaultLocation);
@@ -383,6 +385,21 @@ const LocationColumn = ({
   
   // Track if user is currently editing (typing but hasn't selected)
   const [isEditing, setIsEditing] = useState(false);
+
+  // Notify parent whenever selection state changes
+  useEffect(() => {
+    const isWaitingForSelection = isEditing || !markerVisible;
+    console.log('[LocationColumn]', title, '- Selection state:', {
+      isEditing,
+      markerVisible,
+      isWaitingForSelection: isWaitingForSelection,
+      hasValidSelection: !isWaitingForSelection
+    });
+    
+    if (onSelectionStateChange) {
+      onSelectionStateChange(!isWaitingForSelection);
+    }
+  }, [isEditing, markerVisible, title, onSelectionStateChange]);
 
   // Determine which location to show on the map
   const mapLocation = currentLocation;
@@ -558,8 +575,131 @@ export const LocationSearchPage = ({
   const [sourceInvalid, setSourceInvalid] = useState(!!sourceError);
   const [destinationInvalid, setDestinationInvalid] = useState(!!destinationError);
 
-  // Check if both locations are valid (button should be enabled)
-  const isButtonEnabled = !sourceError && !destinationError && !sourceInvalid && !destinationInvalid;
+  // Track selection states for both locations
+  const [sourceHasValidSelection, setSourceHasValidSelection] = useState(true); // Start true (default location)
+  const [destinationHasValidSelection, setDestinationHasValidSelection] = useState(true); // Start true (default location)
+
+  // Track route distance
+  const [routeDistance, setRouteDistance] = useState<string | null>(null);
+  const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+
+  // Check if both locations are valid and selected (button should be enabled)
+  const isButtonEnabled = 
+    !sourceError && 
+    !destinationError && 
+    !sourceInvalid && 
+    !destinationInvalid && 
+    sourceHasValidSelection && 
+    destinationHasValidSelection;
+
+  console.log('[LocationSearchPage] Button state:', {
+    sourceError: !!sourceError,
+    destinationError: !!destinationError,
+    sourceInvalid,
+    destinationInvalid,
+    sourceHasValidSelection,
+    destinationHasValidSelection,
+    isButtonEnabled,
+    routeDistance
+  });
+
+  // Calculate route distance whenever locations change
+  useEffect(() => {
+    const calculateDistance = async () => {
+      if (!sourceLocation || !destinationLocation) {
+        console.log('[LocationSearchPage] ⚠️ Missing locations for distance calculation');
+        return;
+      }
+
+      if (!sourceHasValidSelection || !destinationHasValidSelection) {
+        console.log('[LocationSearchPage] ⚠️ Waiting for valid location selections');
+        setRouteDistance(null);
+        return;
+      }
+
+      console.log('[LocationSearchPage] 📏 Calculating route distance...');
+      setIsCalculatingDistance(true);
+
+      try {
+        const origin = `${sourceLocation.lat},${sourceLocation.lng}`;
+        const destination = `${destinationLocation.lat},${destinationLocation.lng}`;
+
+        const response = await fetch(
+          `https://routes.googleapis.com/directions/v2:computeRoutes`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+              'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+            },
+            body: JSON.stringify({
+              origin: {
+                location: {
+                  latLng: {
+                    latitude: sourceLocation.lat,
+                    longitude: sourceLocation.lng,
+                  },
+                },
+              },
+              destination: {
+                location: {
+                  latLng: {
+                    latitude: destinationLocation.lat,
+                    longitude: destinationLocation.lng,
+                  },
+                },
+              },
+              travelMode: 'WALK',
+              routingPreference: 'ROUTING_PREFERENCE_UNSPECIFIED',
+              computeAlternativeRoutes: false,
+              routeModifiers: {
+                avoidTolls: false,
+                avoidHighways: false,
+                avoidFerries: false,
+              },
+              languageCode: 'en-US',
+              units: 'METRIC',
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Routes API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('[LocationSearchPage] 📊 Routes API response:', data);
+
+        if (data.routes && data.routes.length > 0) {
+          const distanceMeters = data.routes[0].distanceMeters;
+          console.log('[LocationSearchPage] 📏 Distance in meters:', distanceMeters);
+
+          // Format distance
+          let formattedDistance: string;
+          if (distanceMeters < 1000) {
+            formattedDistance = `${Math.round(distanceMeters)}m`;
+          } else {
+            const distanceKm = distanceMeters / 1000;
+            formattedDistance = `${distanceKm.toFixed(1)}km`;
+          }
+
+          console.log('[LocationSearchPage] ✅ Formatted distance:', formattedDistance);
+          setRouteDistance(formattedDistance);
+        } else {
+          console.warn('[LocationSearchPage] ⚠️ No routes found in response');
+          setRouteDistance(null);
+        }
+      } catch (error) {
+        console.error('[LocationSearchPage] ❌ Error calculating distance:', error);
+        setRouteDistance(null);
+      } finally {
+        setIsCalculatingDistance(false);
+      }
+    };
+
+    calculateDistance();
+  }, [sourceLocation, destinationLocation, sourceHasValidSelection, destinationHasValidSelection]);
 
   // Popular walking routes with sensible distances
   const popularRoutes = [
@@ -657,6 +797,33 @@ export const LocationSearchPage = ({
     setDestinationInvalid(true);
   };
 
+  const handleSourceSelectionStateChange = (hasValidSelection: boolean) => {
+    console.log('[LocationSearchPage] 📍 Source selection state changed:', hasValidSelection);
+    setSourceHasValidSelection(hasValidSelection);
+  };
+
+  const handleDestinationSelectionStateChange = (hasValidSelection: boolean) => {
+    console.log('[LocationSearchPage] 📍 Destination selection state changed:', hasValidSelection);
+    setDestinationHasValidSelection(hasValidSelection);
+  };
+
+  // Determine button text based on state
+  const getButtonText = () => {
+    if (!isButtonEnabled) {
+      return 'Please Select Valid Locations';
+    }
+    
+    if (isCalculatingDistance) {
+      return 'Calculating Route...';
+    }
+    
+    if (routeDistance) {
+      return `Explore Your Selected ${routeDistance} Route`;
+    }
+    
+    return 'Start Your Exploration';
+  };
+
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8 w-full">
@@ -695,6 +862,7 @@ export const LocationSearchPage = ({
             defaultLocation={defaultSourceLocation}
             onLocationChange={handleSourceLocationChange}
             onInvalidLocation={handleSourceInvalid}
+            onSelectionStateChange={handleSourceSelectionStateChange}
           />
 
           {/* Divider */}
@@ -710,6 +878,7 @@ export const LocationSearchPage = ({
             defaultLocation={defaultDestinationLocation}
             onLocationChange={handleDestinationLocationChange}
             onInvalidLocation={handleDestinationInvalid}
+            onSelectionStateChange={handleDestinationSelectionStateChange}
           />
         </div>
 
@@ -730,9 +899,9 @@ export const LocationSearchPage = ({
           )}
           <div className="relative flex items-center justify-center gap-3">
             <span className="text-xl">
-              {isButtonEnabled ? 'Start Your Exploration' : 'Please Select Valid Locations'}
+              {getButtonText()}
             </span>
-            {isButtonEnabled && (
+            {isButtonEnabled && !isCalculatingDistance && (
               <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
             )}
           </div>
