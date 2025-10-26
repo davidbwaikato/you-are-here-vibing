@@ -27,13 +27,15 @@ const GoogleMapEmbed = ({
   title,
   onLoad,
   onLocationChange,
-  onInvalidLocation
+  onInvalidLocation,
+  onEditingStateChange
 }: { 
   location: { lat: number; lng: number }; 
   title: string;
   onLoad: () => void;
   onLocationChange?: (location: { lat: number; lng: number; shortName: string; fullAddress: string }) => void;
   onInvalidLocation?: (attemptedText: string) => void;
+  onEditingStateChange?: (isEditing: boolean) => void;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const autocompleteContainerRef = useRef<HTMLDivElement>(null);
@@ -41,7 +43,15 @@ const GoogleMapEmbed = ({
   const markerRef = useRef<google.maps.Marker | null>(null);
   const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
   const mountedRef = useRef(false);
-  const lastValidSelectionRef = useRef<string>(''); // Track last valid selection
+  
+  // State management for marker visibility and display name
+  const committedPlaceRef = useRef<google.maps.places.Place | null>(null);
+  const editedSinceFocusRef = useRef(false);
+  const [markerVisible, setMarkerVisible] = useState(true); // Start with marker visible (default location)
+  const [displayName, setDisplayName] = useState(title); // Track the short name to display
+  
+  // Track the last location coordinates to detect external changes
+  const lastLocationRef = useRef({ lat: location.lat, lng: location.lng });
 
   useEffect(() => {
     if (!window.google || !window.google.maps) {
@@ -55,12 +65,21 @@ const GoogleMapEmbed = ({
     }
 
     if (mountedRef.current) {
-      // Already initialized, just update position
+      // Already initialized, just update position if location changed externally
       if (mapInstanceRef.current && markerRef.current) {
-        const newPos = { lat: location.lat, lng: location.lng };
-        mapInstanceRef.current.setCenter(newPos);
-        markerRef.current.setPosition(newPos);
-        markerRef.current.setTitle(title);
+        const locationChanged = 
+          lastLocationRef.current.lat !== location.lat || 
+          lastLocationRef.current.lng !== location.lng;
+        
+        if (locationChanged) {
+          console.log('[GoogleMapEmbed] 🔄 External location change detected');
+          const newPos = { lat: location.lat, lng: location.lng };
+          mapInstanceRef.current.setCenter(newPos);
+          markerRef.current.setPosition(newPos);
+          markerRef.current.setTitle(title);
+          setDisplayName(title); // Only update display name on external location change
+          lastLocationRef.current = { lat: location.lat, lng: location.lng };
+        }
       }
       return;
     }
@@ -84,6 +103,7 @@ const GoogleMapEmbed = ({
         position: { lat: location.lat, lng: location.lng },
         map: map,
         title: title,
+        visible: true, // Start visible (default location)
       });
 
       markerRef.current = marker;
@@ -91,18 +111,70 @@ const GoogleMapEmbed = ({
       // Create PlaceAutocompleteElement
       const autocomplete = new google.maps.places.PlaceAutocompleteElement();
       autocomplete.style.border = '1px solid black';
-      // CRITICAL: Set high z-index to appear above all other elements
       autocomplete.style.position = 'relative';
       autocomplete.style.zIndex = '9999';
       autocompleteContainerRef.current.appendChild(autocomplete);
       autocompleteRef.current = autocomplete;
 
-      console.log('[GoogleMapEmbed] Autocomplete element created with z-index 9999');
+      console.log('[GoogleMapEmbed] Autocomplete element created');
 
-      // Use the correct event name and structure from Google's documentation
+      // ============================================================================
+      // MARKER VISIBILITY STATE MANAGEMENT
+      // ============================================================================
+
+      // Helper functions for marker visibility
+      const hideMarker = () => {
+        console.log('[GoogleMapEmbed] 🙈 Hiding marker (user is editing)');
+        if (markerRef.current) {
+          markerRef.current.setVisible(false);
+        }
+        setMarkerVisible(false);
+      };
+
+      const showMarkerAt = (position: google.maps.LatLng, placeName: string, shortName: string) => {
+        console.log('[GoogleMapEmbed] 👁️ Showing marker at:', position.lat(), position.lng());
+        console.log('[GoogleMapEmbed] 📝 Display name:', shortName);
+        if (markerRef.current && mapInstanceRef.current) {
+          markerRef.current.setPosition(position);
+          markerRef.current.setTitle(placeName);
+          markerRef.current.setVisible(true);
+          mapInstanceRef.current.setCenter(position);
+          mapInstanceRef.current.setZoom(15);
+          
+          // Update last location ref to prevent external update from overwriting
+          lastLocationRef.current = { lat: position.lat(), lng: position.lng() };
+        }
+        setMarkerVisible(true);
+        setDisplayName(shortName); // Update the display name
+      };
+
+      // FOCUS EVENT: Reset edited flag
+      const handleFocus = () => {
+        console.log('[GoogleMapEmbed] 🎯 FOCUS: Resetting editedSinceFocus flag');
+        editedSinceFocusRef.current = false;
+      };
+
+      autocomplete.addEventListener('focus', handleFocus);
+
+      // INPUT EVENT: User started typing
+      const handleInput = () => {
+        if (!editedSinceFocusRef.current) {
+          console.log('[GoogleMapEmbed] ⌨️ INPUT: User started editing, hiding marker');
+          editedSinceFocusRef.current = true;
+          hideMarker();
+          
+          // Notify parent that user is editing
+          if (onEditingStateChange) {
+            onEditingStateChange(true);
+          }
+        }
+      };
+
+      autocomplete.addEventListener('input', handleInput);
+
+      // GMP-SELECT EVENT: User selected a place
       autocomplete.addEventListener('gmp-select', async ({ placePrediction }: any) => {
-        console.log('[GoogleMapEmbed] ✅ gmp-select event fired!');
-        console.log('[GoogleMapEmbed] placePrediction:', placePrediction);
+        console.log('[GoogleMapEmbed] ✅ GMP-SELECT: Place selected');
 
         try {
           // Convert placePrediction to Place object
@@ -125,39 +197,32 @@ const GoogleMapEmbed = ({
             return;
           }
 
+          // Store as committed place
+          committedPlaceRef.current = place;
+          editedSinceFocusRef.current = false;
+
           const newLocation = {
             lat: place.location.lat(),
             lng: place.location.lng(),
           };
 
-          // CRITICAL: Prioritize MORE DETAILED text for both fields
-          // formattedAddress is typically more detailed than displayName
           const shortName = place.displayName || place.formattedAddress || 'Unknown location';
-          
-          // PRIORITY ORDER for "Showing:" label (most detailed first):
-          // 1. formattedAddress (full address with postal code, country, etc.)
-          // 2. displayName (shorter name)
-          // 3. fallback
           const fullAddress = place.formattedAddress || place.displayName || 'Unknown location';
 
-          // Store the valid selection text
-          lastValidSelectionRef.current = fullAddress;
+          console.log('[GoogleMapEmbed] 📝 Short name:', shortName);
+          console.log('[GoogleMapEmbed] 📍 Full address:', fullAddress);
 
-          console.log('[GoogleMapEmbed] 🗺️ Updating map to:', newLocation);
-          console.log('[GoogleMapEmbed] 📝 Short name (status):', shortName);
-          console.log('[GoogleMapEmbed] 📍 Full address (showing label):', fullAddress);
+          // Show marker at selected location with short name
+          showMarkerAt(place.location, fullAddress, shortName);
 
-          // Update map and marker
-          map.setCenter(newLocation);
-          map.setZoom(15);
-          marker.setPosition(newLocation);
-          marker.setTitle(fullAddress);
+          // Notify parent that editing is complete
+          if (onEditingStateChange) {
+            onEditingStateChange(false);
+          }
 
-          console.log('[GoogleMapEmbed] ✅ Map and marker updated');
-
-          // Notify parent component with BOTH short name and full address
+          // Notify parent component
           if (onLocationChange) {
-            console.log('[GoogleMapEmbed] 📢 Notifying parent - Short:', shortName, 'Full:', fullAddress);
+            console.log('[GoogleMapEmbed] 📢 Notifying parent');
             onLocationChange({
               lat: newLocation.lat,
               lng: newLocation.lng,
@@ -170,50 +235,64 @@ const GoogleMapEmbed = ({
         }
       });
 
-      console.log('[GoogleMapEmbed] ✅ Event listener attached to autocomplete element');
-
-      // Add blur event listener to detect invalid locations
+      // BLUR EVENT: User clicked away
       const handleBlur = () => {
-        console.log('[GoogleMapEmbed] 🔍 Autocomplete blur event fired');
+        console.log('[GoogleMapEmbed] 🔍 BLUR: User clicked away');
         
-        // Get the current input value from the autocomplete element
-        const inputElement = autocomplete.querySelector('input');
-        const currentValue = inputElement?.value?.trim() || '';
-        
-        console.log('[GoogleMapEmbed] 📝 Current input value:', currentValue);
-        console.log('[GoogleMapEmbed] 📝 Last valid selection:', lastValidSelectionRef.current);
+        // If they focused and clicked away without editing, do nothing
+        if (!editedSinceFocusRef.current) {
+          console.log('[GoogleMapEmbed] No edits made, keeping current state');
+          return;
+        }
 
-        // Check if the current value is different from the last valid selection
-        // and is not empty (empty means user cleared it intentionally)
-        if (currentValue && currentValue !== lastValidSelectionRef.current) {
-          console.log('[GoogleMapEmbed] ⚠️ Invalid location detected:', currentValue);
+        // If they edited but didn't select a place
+        console.log('[GoogleMapEmbed] User edited but did not select');
+        
+        if (committedPlaceRef.current) {
+          // Option A (conservative): Revert to last valid place
+          console.log('[GoogleMapEmbed] 🔄 Reverting to last committed place');
+          const lastPlace = committedPlaceRef.current;
           
-          // Remove marker from map
-          if (markerRef.current) {
-            console.log('[GoogleMapEmbed] 🗑️ Removing marker from map');
-            markerRef.current.setMap(null);
+          if (lastPlace.location) {
+            const shortName = lastPlace.displayName || lastPlace.formattedAddress || 'Unknown location';
+            const fullAddress = lastPlace.formattedAddress || lastPlace.displayName || 'Unknown location';
+            showMarkerAt(lastPlace.location, fullAddress, shortName);
+            
+            // Notify parent that editing is complete (reverted)
+            if (onEditingStateChange) {
+              onEditingStateChange(false);
+            }
+            
+            // Notify parent to revert UI
+            if (onLocationChange) {
+              onLocationChange({
+                lat: lastPlace.location.lat(),
+                lng: lastPlace.location.lng(),
+                shortName: shortName,
+                fullAddress: fullAddress,
+              });
+            }
           }
-
-          // Notify parent about invalid location
-          if (onInvalidLocation) {
-            console.log('[GoogleMapEmbed] 📢 Notifying parent about invalid location');
-            onInvalidLocation(currentValue);
-          }
-        } else if (!currentValue) {
-          console.log('[GoogleMapEmbed] ℹ️ Input cleared by user');
         } else {
-          console.log('[GoogleMapEmbed] ✅ Input matches last valid selection');
+          // Option B (strict): Keep hidden until new selection
+          console.log('[GoogleMapEmbed] 🙈 No committed place, keeping marker hidden');
+          hideMarker();
+          
+          // Notify parent that we're still waiting
+          if (onEditingStateChange) {
+            onEditingStateChange(true);
+          }
         }
       };
 
-      // Attach blur listener to the input element inside autocomplete
-      const inputElement = autocomplete.querySelector('input');
-      if (inputElement) {
-        inputElement.addEventListener('blur', handleBlur);
-        console.log('[GoogleMapEmbed] ✅ Blur event listener attached to input element');
-      } else {
-        console.warn('[GoogleMapEmbed] ⚠️ Could not find input element in autocomplete');
-      }
+      autocomplete.addEventListener('blur', handleBlur);
+
+      // Store cleanup functions
+      (autocomplete as any).__focusHandler = handleFocus;
+      (autocomplete as any).__inputHandler = handleInput;
+      (autocomplete as any).__blurHandler = handleBlur;
+
+      console.log('[GoogleMapEmbed] ✅ All event listeners attached');
 
       mountedRef.current = true;
       onLoad();
@@ -221,18 +300,26 @@ const GoogleMapEmbed = ({
       console.error('[GoogleMapEmbed] ❌ Error initializing map:', error);
     }
 
-    // Cleanup on unmount only
+    // Cleanup on unmount
     return () => {
       console.log('[GoogleMapEmbed] 🧹 Cleaning up map and autocomplete');
       
-      // Remove blur listener
       if (autocompleteRef.current) {
-        const inputElement = autocompleteRef.current.querySelector('input');
-        if (inputElement) {
-          inputElement.removeEventListener('blur', handleBlur);
+        const focusHandler = (autocompleteRef.current as any).__focusHandler;
+        const inputHandler = (autocompleteRef.current as any).__inputHandler;
+        const blurHandler = (autocompleteRef.current as any).__blurHandler;
+        
+        if (focusHandler) {
+          autocompleteRef.current.removeEventListener('focus', focusHandler);
+        }
+        if (inputHandler) {
+          autocompleteRef.current.removeEventListener('input', inputHandler);
+        }
+        if (blurHandler) {
+          autocompleteRef.current.removeEventListener('blur', blurHandler);
         }
       }
-
+      
       if (autocompleteRef.current && autocompleteContainerRef.current) {
         try {
           autocompleteContainerRef.current.removeChild(autocompleteRef.current);
@@ -250,16 +337,6 @@ const GoogleMapEmbed = ({
       }
       mountedRef.current = false;
     };
-  }, []); // Empty deps - only run once on mount
-
-  // Update map when location changes externally
-  useEffect(() => {
-    if (mountedRef.current && mapInstanceRef.current && markerRef.current) {
-      const newPos = { lat: location.lat, lng: location.lng };
-      mapInstanceRef.current.setCenter(newPos);
-      markerRef.current.setPosition(newPos);
-      markerRef.current.setTitle(title);
-    }
   }, [location.lat, location.lng, title]);
 
   return (
@@ -270,7 +347,7 @@ const GoogleMapEmbed = ({
         className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 bg-slate-100"
       />
       
-      {/* Autocomplete Container - High z-index to appear above button */}
+      {/* Autocomplete Container */}
       <div 
         ref={autocompleteContainerRef}
         className="w-full relative z-[9999]"
@@ -299,14 +376,13 @@ const LocationColumn = ({
   const [invalidLocationText, setInvalidLocationText] = useState<string | null>(
     hasError ? attemptedLocation : null
   );
+
+  // Track display name and marker visibility for status message
+  const [displayName, setDisplayName] = useState(defaultLocation.name);
+  const [markerVisible, setMarkerVisible] = useState(true);
   
-  // Separate state for status message (short name) and "Show:" label (full address)
-  const [statusDisplayName, setStatusDisplayName] = useState<string>(
-    recognizedLocation?.address || defaultLocation.name
-  );
-  const [showLabelAddress, setShowLabelAddress] = useState<string>(
-    recognizedLocation?.address || defaultLocation.name
-  );
+  // Track if user is currently editing (typing but hasn't selected)
+  const [isEditing, setIsEditing] = useState(false);
 
   // Determine which location to show on the map
   const mapLocation = currentLocation;
@@ -314,12 +390,17 @@ const LocationColumn = ({
 
   const handleLocationChange = (newLocation: { lat: number; lng: number; shortName: string; fullAddress: string }) => {
     console.log('[LocationColumn] 📍 Location changed');
-    console.log('[LocationColumn] 📝 Short name (for status):', newLocation.shortName);
-    console.log('[LocationColumn] 📍 Full address (for "Showing:" label):', newLocation.fullAddress);
+    console.log('[LocationColumn] 📝 Short name:', newLocation.shortName);
+    console.log('[LocationColumn] 📍 Full address:', newLocation.fullAddress);
     
     // Mark that user has selected a valid location (clears error state)
     setHasValidSelection(true);
     setInvalidLocationText(null);
+    
+    // Update display name and marker visibility
+    setDisplayName(newLocation.shortName);
+    setMarkerVisible(true);
+    setIsEditing(false); // User has completed selection
     
     // Update map location
     setCurrentLocation({
@@ -327,12 +408,6 @@ const LocationColumn = ({
       lng: newLocation.lng,
       name: newLocation.fullAddress,
     });
-    
-    // Update status message with SHORT name
-    setStatusDisplayName(newLocation.shortName);
-    
-    // Update "Showing:" label with FULL address (most detailed)
-    setShowLabelAddress(newLocation.fullAddress);
     
     // Notify parent with full address for navigation
     onLocationChange({
@@ -355,7 +430,12 @@ const LocationColumn = ({
     }
   };
 
-  // Determine if we should show error or success message
+  const handleEditingStateChange = (editing: boolean) => {
+    console.log('[LocationColumn] ✏️ Editing state changed:', editing);
+    setIsEditing(editing);
+  };
+
+  // Determine if we should show error message
   const showError = (hasError || !hasValidSelection) && invalidLocationText;
 
   return (
@@ -368,17 +448,32 @@ const LocationColumn = ({
         <div className="h-1 w-16 bg-gradient-to-r from-blue-600 to-purple-600 mx-auto rounded-full" />
       </div>
 
-      {/* Compact Status Message - Single Line - Updates with SHORT NAME */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 shadow-sm min-h-[80px] flex items-center justify-center">
-        {showError ? (
+      {/* Error Message - Only shown when there's an error */}
+      {showError && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-red-200 shadow-sm">
           <p className="text-slate-600 text-sm font-light text-center break-words">
             <span className="text-red-500 font-medium">✗</span> Sorry, we couldn't find: <span className="font-medium text-slate-800">{invalidLocationText}</span>
           </p>
-        ) : (
-          <p className="text-slate-700 text-sm font-light text-center break-words">
-            <span className="text-green-600 font-medium">✓</span> Location recognized: <span className="font-medium text-slate-800">{statusDisplayName}</span>
-          </p>
-        )}
+        </div>
+      )}
+
+      {/* Status Message - Positioned ABOVE the map section */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-slate-200 shadow-sm">
+        <div className="text-center">
+          {isEditing ? (
+            <p className="text-slate-500 text-sm font-light italic">
+              Waiting for a location to be selected
+            </p>
+          ) : markerVisible ? (
+            <p className="text-slate-600 text-sm font-light">
+              <span className="text-green-600 font-medium">✓</span> Location recognised: <span className="font-medium text-slate-800">{displayName}</span>
+            </p>
+          ) : (
+            <p className="text-slate-500 text-sm font-light italic">
+              Waiting for a location to be selected
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Google Maps Section - Relative positioning for z-index context */}
@@ -404,13 +499,9 @@ const LocationColumn = ({
             onLoad={() => setMapLoaded(true)}
             onLocationChange={handleLocationChange}
             onInvalidLocation={handleInvalidLocation}
+            onEditingStateChange={handleEditingStateChange}
           />
         </div>
-
-        {/* Map Caption - Shows FULL ADDRESS (most detailed) - with text wrapping */}
-        <p className="text-slate-500 text-xs mt-3 text-center font-light break-words">
-          Showing: {showLabelAddress}
-        </p>
       </div>
     </div>
   );
