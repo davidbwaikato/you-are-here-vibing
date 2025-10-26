@@ -48,6 +48,7 @@ export const PreparationScreen = ({
   // CRITICAL FIX: Monitor Redux state to ensure audio data is persisted before transitioning
   const sourceDetails = useSelector((state: RootState) => state.streetView.sourceDetails);
   const destinationDetails = useSelector((state: RootState) => state.streetView.destinationDetails);
+  const ttsVoice = useSelector((state: RootState) => state.streetView.ttsVoice);
   const [isPreparationComplete, setIsPreparationComplete] = useState(false);
 
   // Get Google Maps API key from environment
@@ -64,6 +65,7 @@ export const PreparationScreen = ({
     console.log('[PreparationScreen] 🚀 PHASE 3: PREPARATION SCREEN');
     console.log('[PreparationScreen] 📍 Source:', sourceAddress, sourceLocation);
     console.log('[PreparationScreen] 📍 Destination:', destinationAddress, destinationLocation);
+    console.log('[PreparationScreen] 🎤 TTS Voice:', ttsVoice);
 
     // Execute preparation steps sequentially
     const executePreparation = async () => {
@@ -116,14 +118,19 @@ export const PreparationScreen = ({
 
         // Step 2: Synthesize audio
         console.log('[PreparationScreen] 🎤 Step 2: Synthesizing audio via OpenAI TTS...');
+        console.log('[PreparationScreen] 🎤 Using voice:', ttsVoice);
         setCurrentStep('synthesizing-audio');
         setProgress(20);
 
-        // Synthesize source audio
+        // Synthesize source audio using Redux voice setting
         if ('enhancedDescription' in sourceResult) {
-          const sourceAudioResult = await synthesizeTextToSpeech(sourceResult.enhancedDescription, 'alloy');
+          const sourceAudioResult = await synthesizeTextToSpeech(
+            sourceResult.enhancedDescription, 
+            ttsVoice,
+            sourceAddress // Pass shortName for storage key
+          );
           if ('audioUrl' in sourceAudioResult) {
-            console.log('[PreparationScreen] ✅ Source audio synthesized');
+            console.log('[PreparationScreen] ✅ Source audio synthesized with voice:', ttsVoice);
             console.log('[PreparationScreen] 📊 Dispatching updateSourceAudio with:', {
               audioUrl: sourceAudioResult.audioUrl.substring(0, 50) + '...',
               audioFilename: sourceAudioResult.filename,
@@ -137,11 +144,15 @@ export const PreparationScreen = ({
           }
         }
 
-        // Synthesize destination audio
+        // Synthesize destination audio using Redux voice setting
         if ('enhancedDescription' in destResult) {
-          const destAudioResult = await synthesizeTextToSpeech(destResult.enhancedDescription, 'alloy');
+          const destAudioResult = await synthesizeTextToSpeech(
+            destResult.enhancedDescription, 
+            ttsVoice,
+            destinationAddress // Pass shortName for storage key
+          );
           if ('audioUrl' in destAudioResult) {
-            console.log('[PreparationScreen] ✅ Destination audio synthesized');
+            console.log('[PreparationScreen] ✅ Destination audio synthesized with voice:', ttsVoice);
             console.log('[PreparationScreen] 📊 Dispatching updateDestinationAudio with:', {
               audioUrl: destAudioResult.audioUrl.substring(0, 50) + '...',
               audioFilename: destAudioResult.filename,
@@ -221,7 +232,7 @@ export const PreparationScreen = ({
     };
 
     executePreparation();
-  }, [sourceLocation, destinationLocation, sourceAddress, destinationAddress, dispatch, googleMapsApiKey]);
+  }, [sourceLocation, destinationLocation, sourceAddress, destinationAddress, dispatch, googleMapsApiKey, ttsVoice]);
 
   // CRITICAL FIX: Wait for Redux state to update before transitioning
   useEffect(() => {

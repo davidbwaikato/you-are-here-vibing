@@ -488,8 +488,8 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
 
     const newCuboids: LocationCuboid[] = [];
 
-    // Create cuboid geometry (20x20x8 - width x depth x height)
-    const cuboidGeometry = new THREE.BoxGeometry(20, 8, 20);
+    // Create cuboid geometry (25x25x10 - width x depth x height)
+    const cuboidGeometry = new THREE.BoxGeometry(25, 10, 25);
     
     // Semi-translucent amber material
     const createCuboidMaterial = () => new THREE.MeshStandardMaterial({
@@ -523,10 +523,10 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       
       // Position at ground level (compensate for Street View eye level)
       // Street View eye level is at y=0, so ground is at y=-STREET_VIEW_EYE_LEVEL
-      // Cuboid height is 8, so center it at ground + half height
+      // Cuboid height is 10, so center it at ground + half height
       mesh.position.set(
         point3D.x,
-        -STREET_VIEW_EYE_LEVEL + 4, // Ground level + half of cuboid height (8/2 = 4)
+        -STREET_VIEW_EYE_LEVEL + 3, // Ground level + half of cuboid height (10/2 = 5)
         point3D.z
       );
       
@@ -536,7 +536,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       console.log('[ThreeJS] ✅ Source cuboid created at:', {
         position: mesh.position,
         distance: Math.sqrt(point3D.x * point3D.x + point3D.z * point3D.z).toFixed(2) + 'm',
-        dimensions: '20x20x8',
+        dimensions: '25x25x10',
       });
     } else if (sourceLocation) {
       console.log('[ThreeJS] ⏸️ Source location outside catchment area:', {
@@ -556,7 +556,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       // Position at ground level (compensate for Street View eye level)
       mesh.position.set(
         point3D.x,
-        -STREET_VIEW_EYE_LEVEL + 4, // Ground level + half of cuboid height (8/2 = 4)
+        -STREET_VIEW_EYE_LEVEL + 3, // Ground level + half of cuboid height (10/2 = 5)
         point3D.z
       );
       
@@ -566,7 +566,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
       console.log('[ThreeJS] ✅ Destination cuboid created at:', {
         position: mesh.position,
         distance: Math.sqrt(point3D.x * point3D.x + point3D.z * point3D.z).toFixed(2) + 'm',
-        dimensions: '20x20x8',
+        dimensions: '25x25x10',
       });
     } else if (destinationLocation) {
       console.log('[ThreeJS] ⏸️ Destination location outside catchment area:', {

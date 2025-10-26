@@ -14,6 +14,9 @@ interface LocationDetails {
   audioFilename?: string;
 }
 
+// OpenAI TTS voice options
+export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+
 interface StreetViewState {
   position: {
     lat: number;
@@ -43,6 +46,7 @@ interface StreetViewState {
   routePolyline: LatLng[];
   selectedMarkerIndex: number;
   isFistTrackingActive: boolean;
+  ttsVoice: TTSVoice;
 }
 
 const initialState: StreetViewState = {
@@ -68,6 +72,7 @@ const initialState: StreetViewState = {
   routePolyline: [],
   selectedMarkerIndex: 0,
   isFistTrackingActive: false,
+  ttsVoice: 'alloy', // Default voice
 };
 
 const streetViewSlice = createSlice({
@@ -212,6 +217,11 @@ const streetViewSlice = createSlice({
       state.isFistTrackingActive = action.payload;
       console.log('[Redux Reducer] New isFistTrackingActive state:', state.isFistTrackingActive);
     },
+    setTTSVoice: (state, action: PayloadAction<TTSVoice>) => {
+      console.log('[Redux Reducer] setTTSVoice called with:', action.payload);
+      state.ttsVoice = action.payload;
+      console.log('[Redux Reducer] New ttsVoice state:', state.ttsVoice);
+    },
     clearRoute: (state) => {
       console.log('[Redux Reducer] clearRoute called');
       state.routePolyline = [];
@@ -251,6 +261,7 @@ export const {
   setRoutePolyline,
   setSelectedMarkerIndex,
   setFistTrackingActive,
+  setTTSVoice,
   clearRoute,
 } = streetViewSlice.actions;
 export default streetViewSlice.reducer;
