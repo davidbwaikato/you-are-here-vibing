@@ -84,7 +84,7 @@ export const PreparationScreen = ({
         // Step 1: Generate enhanced descriptions
         console.log('[PreparationScreen] 🤖 Step 1: Generating enhanced descriptions via OpenAI...');
         setCurrentStep('generating-descriptions');
-        setProgress(0);
+        setProgress(5);
 
         // Generate source description
         const sourceResult = await generateEnhancedDescription(
@@ -139,7 +139,7 @@ export const PreparationScreen = ({
 
         // Synthesize destination audio
         if ('enhancedDescription' in destResult) {
-          const destAudioResult = await synthesizeTextToSpeech(destResult.enhancedDescription, 'nova');
+          const destAudioResult = await synthesizeTextToSpeech(destResult.enhancedDescription, 'alloy');
           if ('audioUrl' in destAudioResult) {
             console.log('[PreparationScreen] ✅ Destination audio synthesized');
             console.log('[PreparationScreen] 📊 Dispatching updateDestinationAudio with:', {

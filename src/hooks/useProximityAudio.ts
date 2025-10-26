@@ -43,7 +43,6 @@ export const useProximityAudio = () => {
 
   const [isAudioReady, setIsAudioReady] = useState(false);
   const [keyboardControlActive, setKeyboardControlActive] = useState<'source' | 'destination' | null>(null);
-  const hasInitializedAudio = useRef(false);
 
   // Get data from Redux store
   const { 
@@ -66,7 +65,6 @@ export const useProximityAudio = () => {
         hasDestinationAudio: !!destinationDetails?.audioUrl,
         sourceAudioUrl: sourceDetails?.audioUrl?.substring(0, 50),
         destinationAudioUrl: destinationDetails?.audioUrl?.substring(0, 50),
-        hasInitializedAudio: hasInitializedAudio.current,
       });
     }
   }, [isStreetViewLoaded, sourceDetails, destinationDetails]);
@@ -225,18 +223,11 @@ export const useProximityAudio = () => {
       console.log('[ProximityAudio] 🎵 Audio initialization effect running...', {
         hasSourceAudio: !!sourceDetails?.audioUrl,
         hasDestinationAudio: !!destinationDetails?.audioUrl,
-        hasInitializedAudio: hasInitializedAudio.current,
+        currentSourceAudio: !!audioStateRef.current.sourceAudio,
+        currentDestinationAudio: !!audioStateRef.current.destinationAudio,
         sourceAudioUrl: sourceDetails?.audioUrl?.substring(0, 50),
         destinationAudioUrl: destinationDetails?.audioUrl?.substring(0, 50),
       });
-    }
-
-    // Skip if already initialized
-    if (hasInitializedAudio.current) {
-      if (DEBUG_PROXIMITY_AUDIO) {
-        console.log('[ProximityAudio] ⏭️ Audio already initialized, skipping');
-      }
-      return;
     }
 
     // Check if we have audio data
@@ -249,11 +240,9 @@ export const useProximityAudio = () => {
     }
 
     if (DEBUG_PROXIMITY_AUDIO) {
-      console.log('[ProximityAudio] ✅ Audio data available, initializing audio elements...');
+      console.log('[ProximityAudio] ✅ Audio data available, checking if initialization needed...');
     }
 
-    let sourceAudioElement: HTMLAudioElement | null = null;
-    let destinationAudioElement: HTMLAudioElement | null = null;
     let sourceAudioReady = false;
     let destinationAudioReady = false;
 
@@ -272,7 +261,7 @@ export const useProximityAudio = () => {
       }
     };
 
-    // Create source audio element
+    // Create source audio element if needed
     if (sourceDetails?.audioUrl && !audioStateRef.current.sourceAudio) {
       if (DEBUG_PROXIMITY_AUDIO) {
         console.log('[ProximityAudio] 🎵 Creating source audio element:', {
@@ -281,10 +270,8 @@ export const useProximityAudio = () => {
         });
       }
 
-      sourceAudioElement = new Audio();
+      const sourceAudioElement = new Audio();
       sourceAudioElement.preload = 'auto';
-      
-      // CRITICAL FIX: Explicitly set src and wait for canplaythrough
       sourceAudioElement.src = sourceDetails.audioUrl;
       
       sourceAudioElement.addEventListener('canplaythrough', () => {
@@ -305,13 +292,13 @@ export const useProximityAudio = () => {
         });
       });
 
-      // CRITICAL FIX: Load the audio explicitly
       sourceAudioElement.load();
-
       audioStateRef.current.sourceAudio = sourceAudioElement;
+    } else if (audioStateRef.current.sourceAudio) {
+      sourceAudioReady = true;
     }
 
-    // Create destination audio element
+    // Create destination audio element if needed
     if (destinationDetails?.audioUrl && !audioStateRef.current.destinationAudio) {
       if (DEBUG_PROXIMITY_AUDIO) {
         console.log('[ProximityAudio] 🎵 Creating destination audio element:', {
@@ -320,10 +307,8 @@ export const useProximityAudio = () => {
         });
       }
 
-      destinationAudioElement = new Audio();
+      const destinationAudioElement = new Audio();
       destinationAudioElement.preload = 'auto';
-      
-      // CRITICAL FIX: Explicitly set src and wait for canplaythrough
       destinationAudioElement.src = destinationDetails.audioUrl;
       
       destinationAudioElement.addEventListener('canplaythrough', () => {
@@ -344,20 +329,14 @@ export const useProximityAudio = () => {
         });
       });
 
-      // CRITICAL FIX: Load the audio explicitly
       destinationAudioElement.load();
-
       audioStateRef.current.destinationAudio = destinationAudioElement;
+    } else if (audioStateRef.current.destinationAudio) {
+      destinationAudioReady = true;
     }
 
-    // Mark as initialized
-    hasInitializedAudio.current = true;
-    if (DEBUG_PROXIMITY_AUDIO) {
-      console.log('[ProximityAudio] ✅ Audio initialization complete');
-    }
-
-    // CRITICAL FIX: Don't cleanup audio elements - they need to persist!
-    // Cleanup function removed to prevent audio element destruction
+    // Check if already ready
+    checkIfBothReady();
   }, [sourceDetails?.audioUrl, destinationDetails?.audioUrl]);
 
   // Handle keyboard events
