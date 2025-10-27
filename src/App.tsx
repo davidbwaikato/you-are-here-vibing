@@ -10,18 +10,17 @@ import { useSelector } from 'react-redux';
 import { RootState } from './store/store';
 import { useProximityAudio } from './hooks/useProximityAudio';
 
-type AppPhase = 'splash' | 'location-search' | 'preparation' | 'street-view';
+type AppPhase = 'location-search' | 'preparation' | 'street-view';
 
 function AppContent() {
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
-  const [currentPhase, setCurrentPhase] = useState<AppPhase>('splash');
+  const [currentPhase, setCurrentPhase] = useState<AppPhase>('location-search');
   const isCheckingGoogleMaps = useRef(false);
   const isLoaded = useSelector((state: RootState) => state.streetView.isLoaded);
 
-  // Initialize proximity-based and keyboard-based audio playback
   useProximityAudio();
 
-  // PHASE 1: SPLASH SCREEN - Load Google Maps API
+  // Load Google Maps API in background
   useEffect(() => {
     if (isCheckingGoogleMaps.current) return;
     isCheckingGoogleMaps.current = true;
@@ -32,7 +31,6 @@ function AppContent() {
       
       if (hasMaps) {
         setIsGoogleMapsLoaded(true);
-        setCurrentPhase('location-search');
       } else {
         setTimeout(checkGoogleMaps, 100);
       }
@@ -41,7 +39,6 @@ function AppContent() {
     checkGoogleMaps();
   }, []);
 
-  // Get location parameters
   const { 
     sourceError,
     destinationError,
@@ -52,23 +49,16 @@ function AppContent() {
     destinationAddress,
   } = useLocationParams(isGoogleMapsLoaded);
 
-  // Check if we should show preparation screen
   const urlParams = new URLSearchParams(window.location.search);
   const shouldShowPreparation = urlParams.has('start') && urlParams.get('start') === 'true';
 
-  // PHASE 2 → PHASE 3: Transition to preparation screen
   useEffect(() => {
     if (shouldShowPreparation && currentPhase === 'location-search' && !isInitializing) {
       setCurrentPhase('preparation');
     }
   }, [shouldShowPreparation, currentPhase, isInitializing]);
 
-  // PHASE 1: Splash Screen
-  if (currentPhase === 'splash') {
-    return <SplashScreen onComplete={() => {}} />;
-  }
-
-  // PHASE 2: Location Search Page
+  // PHASE 1: Location Search Page (always shown first)
   if (currentPhase === 'location-search') {
     return (
       <LocationSearchPage 
@@ -78,7 +68,7 @@ function AppContent() {
     );
   }
 
-  // PHASE 3: Preparation Screen
+  // PHASE 2: Preparation Screen
   if (currentPhase === 'preparation') {
     return (
       <PreparationScreen
@@ -91,7 +81,7 @@ function AppContent() {
     );
   }
 
-  // PHASE 4: Street View Panorama
+  // PHASE 3: Street View Panorama
   if (currentPhase === 'street-view') {
     const canShowStreetView = isGoogleMapsLoaded && !isInitializing;
     const shouldShowSplash = !canShowStreetView || !isLoaded;

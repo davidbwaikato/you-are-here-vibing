@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { setPov } from '@/store/streetViewSlice';
+import { RootState } from '@/store/store';
 import { HumanResult, CachedSkeletonParts, HandDetectionData, HandGesture } from '@/types/detection';
 import { deepCopyFace, deepCopyBody, deepCopyHand } from '@/utils/cacheHelpers';
 import { calculateShoulderAngle, normalizeHeading, calculateWrappedDelta } from '@/utils/shoulderTracking';
@@ -33,6 +34,9 @@ export const useDetectionLoop = ({
   canvasElement,
 }: UseDetectionLoopProps) => {
   const dispatch = useDispatch();
+  
+  // Get current POV and lastPovUpdateSource from Redux
+  const { pov, lastPovUpdateSource } = useSelector((state: RootState) => state.streetView);
   
   // FPS calculation state - MUST be called before any conditional logic
   const [detectionFps, setDetectionFps] = useState<number>(0);
@@ -240,7 +244,20 @@ export const useDetectionLoop = ({
             const angleDelta = currentAngle - baselineAngleRef.current;
             onShoulderAngleChange(angleDelta);
             
-            const newHeading = baseHeadingRef.current - angleDelta;
+            // CRITICAL: Choose base heading based on last POV update source
+						console.log(`lastPovUpdateSource = ${lastPovUpdateSource}`);
+            let baseHeading: number;
+            if (lastPovUpdateSource === 'mouse') {
+              // User rotated view with mouse - apply shoulder angle to current view
+              baseHeading = pov.heading;
+							baseHeadingRef.current = baseHeading;
+              console.log('[Shoulder] 🖱️→💪 Using current mouse heading as base:', baseHeading.toFixed(2), '°');
+            } else {
+              // Use original base heading (shoulder, initial, or teleport)
+              baseHeading = baseHeadingRef.current;
+            }
+            
+            const newHeading = baseHeading - angleDelta;
             const normalizedHeading = normalizeHeading(newHeading);
             
             // Hysteresis check
@@ -258,14 +275,17 @@ export const useDetectionLoop = ({
                 }
 
                 povDispatchTimeoutRef.current = setTimeout(() => {
-                  console.log('[Detection] 🔄 Dispatching throttled setPov:', {
+                  console.log('[Detection] 💪 Dispatching throttled setPov (SHOULDER):', {
                     heading: normalizedHeading,
                     pitch: INITIAL_PITCH,
+                    baseHeading: baseHeading.toFixed(2),
+                    angleDelta: angleDelta.toFixed(2),
                   });
                   
                   dispatch(setPov({
                     heading: normalizedHeading,
                     pitch: INITIAL_PITCH,
+                    source: 'shoulder',
                   }));
                   
                   lastDispatchedHeadingRef.current = normalizedHeading;
@@ -273,14 +293,17 @@ export const useDetectionLoop = ({
                 }, POV_DISPATCH_THROTTLE_MS - timeSinceLastDispatch);
               } else {
                 // Not throttled: Dispatch immediately
-                console.log('[Detection] 🔄 Dispatching immediate setPov:', {
+                console.log('[Detection] 💪 Dispatching immediate setPov (SHOULDER):', {
                   heading: normalizedHeading,
                   pitch: INITIAL_PITCH,
+                  baseHeading: baseHeading.toFixed(2),
+                  angleDelta: angleDelta.toFixed(2),
                 });
                 
                 dispatch(setPov({
                   heading: normalizedHeading,
                   pitch: INITIAL_PITCH,
+                  source: 'shoulder',
                 }));
                 
                 lastDispatchedHeadingRef.current = normalizedHeading;
@@ -334,7 +357,7 @@ export const useDetectionLoop = ({
         console.log('[Detection] POV dispatch timeout cleared');
       }
     };
-  }, [isInitialized, isCameraActive, isTrackingEnabled, videoElement, detect, dispatch, onShoulderAngleChange]);
+  }, [isInitialized, isCameraActive, isTrackingEnabled, videoElement, detect, dispatch, onShoulderAngleChange, pov, lastPovUpdateSource]);
 
   // Update the ref whenever tracking state changes
   useEffect(() => {

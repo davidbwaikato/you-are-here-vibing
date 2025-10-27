@@ -94,7 +94,15 @@ export const StreetViewCanvas = ({
     panorama.addListener('pov_changed', () => {
       if (isUpdatingPovRef.current) return;
       const newPov = panorama.getPov();
-      dispatch(setPov({ heading: newPov.heading, pitch: newPov.pitch }));
+      console.log('[StreetView] 🖱️ POV changed by MOUSE:', {
+        heading: newPov.heading.toFixed(2),
+        pitch: newPov.pitch.toFixed(2),
+      });
+      dispatch(setPov({ 
+        heading: newPov.heading, 
+        pitch: newPov.pitch,
+        source: 'mouse',
+      }));
     });
 
     panorama.addListener('zoom_changed', () => {
@@ -146,6 +154,7 @@ export const StreetViewCanvas = ({
 
   useEffect(() => {
     if (!panoramaRef.current || !sourceLocation || hasSourceError || !isPanoramaReady) return;
+    console.log('[StreetView] 🚀 Teleporting to source location (TELEPORT)');
     panoramaRef.current.setPosition(sourceLocation);
   }, [sourceLocation, hasSourceError, isPanoramaReady]);
 
@@ -155,6 +164,7 @@ export const StreetViewCanvas = ({
 
   const handleTeleportToMarker = (markerIndex: number) => {
     if (teleportCallbackRef.current) {
+      console.log('[StreetView] 🚀 Teleporting to marker (TELEPORT):', markerIndex);
       teleportCallbackRef.current(markerIndex);
     }
   };

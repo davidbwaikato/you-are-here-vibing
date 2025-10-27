@@ -17,6 +17,9 @@ interface LocationDetails {
 // OpenAI TTS voice options
 export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
 
+// POV update source tracking
+export type PovUpdateSource = 'shoulder' | 'mouse' | 'initial' | 'teleport';
+
 interface StreetViewState {
   position: {
     lat: number;
@@ -47,6 +50,7 @@ interface StreetViewState {
   selectedMarkerIndex: number;
   isFistTrackingActive: boolean;
   ttsVoice: TTSVoice;
+  lastPovUpdateSource: PovUpdateSource;
 }
 
 const initialState: StreetViewState = {
@@ -72,7 +76,8 @@ const initialState: StreetViewState = {
   routePolyline: [],
   selectedMarkerIndex: 0,
   isFistTrackingActive: false,
-  ttsVoice: 'alloy', // Default voice
+  ttsVoice: 'alloy',
+  lastPovUpdateSource: 'initial',
 };
 
 const streetViewSlice = createSlice({
@@ -84,10 +89,27 @@ const streetViewSlice = createSlice({
       state.position = action.payload;
       console.log('[Redux Reducer] New position state:', state.position);
     },
-    setPov: (state, action: PayloadAction<{ heading: number; pitch: number }>) => {
-      console.log('[Redux Reducer] setPov called with:', action.payload);
-      state.pov = action.payload;
-      console.log('[Redux Reducer] New pov state:', state.pov);
+    setPov: (state, action: PayloadAction<{ heading: number; pitch: number; source?: PovUpdateSource }>) => {
+      const source = action.payload.source || 'mouse';
+      const sourceEmoji = source === 'shoulder' ? '💪' : source === 'mouse' ? '🖱️' : source === 'teleport' ? '🚀' : '🎯';
+      
+      console.log(`[Redux Reducer] ${sourceEmoji} setPov called with:`, {
+        heading: action.payload.heading.toFixed(2),
+        pitch: action.payload.pitch.toFixed(2),
+        source,
+      });
+      
+      state.pov = {
+        heading: action.payload.heading,
+        pitch: action.payload.pitch,
+      };
+      state.lastPovUpdateSource = source;
+      
+      console.log(`[Redux Reducer] ${sourceEmoji} New pov state:`, {
+        heading: state.pov.heading.toFixed(2),
+        pitch: state.pov.pitch.toFixed(2),
+        source: state.lastPovUpdateSource,
+      });
     },
     setZoom: (state, action: PayloadAction<number>) => {
       console.log('[Redux Reducer] setZoom called with:', action.payload);
