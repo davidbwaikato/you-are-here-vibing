@@ -59,7 +59,8 @@ const initialState: StreetViewState = {
     lng: 12.4832866,
   },
   pov: {
-    heading: 355.84,
+    //heading: 355.84,
+		heading: 0.00,
     pitch: 0.00,
   },
   zoom: 1,
