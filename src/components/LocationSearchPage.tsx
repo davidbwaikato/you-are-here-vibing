@@ -1,9 +1,6 @@
 import { MapPin, ArrowRight } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 
-// Debug flag to control console logging
-const DEBUG_LOCATION_SEARCH = false;
-
 export interface LocationError {
   attemptedLocation: string;
   errorMessage: string;
@@ -31,14 +28,12 @@ const GoogleMapEmbed = ({
   title,
   onLoad,
   onLocationChange,
-  onInvalidLocation,
   onEditingStateChange
 }: { 
   location: { lat: number; lng: number }; 
   title: string;
   onLoad: () => void;
   onLocationChange?: (location: { lat: number; lng: number; shortName: string; fullAddress: string }) => void;
-  onInvalidLocation?: (attemptedText: string) => void;
   onEditingStateChange?: (isEditing: boolean) => void;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,58 +43,34 @@ const GoogleMapEmbed = ({
   const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
   const mountedRef = useRef(false);
   
-  // State management for marker visibility and display name
   const committedPlaceRef = useRef<google.maps.places.Place | null>(null);
   const editedSinceFocusRef = useRef(false);
-  const [markerVisible, setMarkerVisible] = useState(true); // Start with marker visible (default location)
-  const [displayName, setDisplayName] = useState(title); // Track the short name to display
-  
-  // Track the last location coordinates to detect external changes
+  const [markerVisible, setMarkerVisible] = useState(true);
+  const [displayName, setDisplayName] = useState(title);
   const lastLocationRef = useRef({ lat: location.lat, lng: location.lng });
 
   useEffect(() => {
-    if (!window.google || !window.google.maps) {
-      if (DEBUG_LOCATION_SEARCH) {
-        console.warn('[GoogleMapEmbed] Google Maps not loaded yet');
-      }
-      return;
-    }
-
-    if (!containerRef.current || !autocompleteContainerRef.current) {
-      if (DEBUG_LOCATION_SEARCH) {
-        console.warn('[GoogleMapEmbed] Container refs not available');
-      }
-      return;
-    }
+    if (!window.google?.maps || !containerRef.current || !autocompleteContainerRef.current) return;
 
     if (mountedRef.current) {
-      // Already initialized, just update position if location changed externally
       if (mapInstanceRef.current && markerRef.current) {
         const locationChanged = 
           lastLocationRef.current.lat !== location.lat || 
           lastLocationRef.current.lng !== location.lng;
         
         if (locationChanged) {
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] 🔄 External location change detected');
-          }
           const newPos = { lat: location.lat, lng: location.lng };
           mapInstanceRef.current.setCenter(newPos);
           markerRef.current.setPosition(newPos);
           markerRef.current.setTitle(title);
-          setDisplayName(title); // Only update display name on external location change
+          setDisplayName(title);
           lastLocationRef.current = { lat: location.lat, lng: location.lng };
         }
       }
       return;
     }
 
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[GoogleMapEmbed] Initializing map and autocomplete:', location);
-    }
-
     try {
-      // Create map
       const map = new google.maps.Map(containerRef.current, {
         center: { lat: location.lat, lng: location.lng },
         zoom: 15,
@@ -110,17 +81,15 @@ const GoogleMapEmbed = ({
 
       mapInstanceRef.current = map;
 
-      // Create marker
       const marker = new google.maps.Marker({
         position: { lat: location.lat, lng: location.lng },
         map: map,
         title: title,
-        visible: true, // Start visible (default location)
+        visible: true,
       });
 
       markerRef.current = marker;
 
-      // Create PlaceAutocompleteElement
       const autocomplete = new google.maps.places.PlaceAutocompleteElement();
       autocomplete.style.border = '1px solid black';
       autocomplete.style.position = 'relative';
@@ -128,106 +97,49 @@ const GoogleMapEmbed = ({
       autocompleteContainerRef.current.appendChild(autocomplete);
       autocompleteRef.current = autocomplete;
 
-      if (DEBUG_LOCATION_SEARCH) {
-        console.log('[GoogleMapEmbed] Autocomplete element created');
-      }
-
-      // ============================================================================
-      // MARKER VISIBILITY STATE MANAGEMENT
-      // ============================================================================
-
-      // Helper functions for marker visibility
       const hideMarker = () => {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[GoogleMapEmbed] 🙈 Hiding marker (user is editing)');
-        }
-        if (markerRef.current) {
-          markerRef.current.setVisible(false);
-        }
+        if (markerRef.current) markerRef.current.setVisible(false);
         setMarkerVisible(false);
       };
 
       const showMarkerAt = (position: google.maps.LatLng, placeName: string, shortName: string) => {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[GoogleMapEmbed] 👁️ Showing marker at:', position.lat(), position.lng());
-          console.log('[GoogleMapEmbed] 📝 Display name:', shortName);
-        }
         if (markerRef.current && mapInstanceRef.current) {
           markerRef.current.setPosition(position);
           markerRef.current.setTitle(placeName);
           markerRef.current.setVisible(true);
           mapInstanceRef.current.setCenter(position);
           mapInstanceRef.current.setZoom(15);
-          
-          // Update last location ref to prevent external update from overwriting
           lastLocationRef.current = { lat: position.lat(), lng: position.lng() };
         }
         setMarkerVisible(true);
-        setDisplayName(shortName); // Update the display name
+        setDisplayName(shortName);
       };
 
-      // FOCUS EVENT: Reset edited flag
       const handleFocus = () => {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[GoogleMapEmbed] 🎯 FOCUS: Resetting editedSinceFocus flag');
-        }
         editedSinceFocusRef.current = false;
       };
 
       autocomplete.addEventListener('focus', handleFocus);
 
-      // INPUT EVENT: User started typing
       const handleInput = () => {
         if (!editedSinceFocusRef.current) {
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] ⌨️ INPUT: User started editing, hiding marker');
-          }
           editedSinceFocusRef.current = true;
           hideMarker();
-          
-          // Notify parent that user is editing
-          if (onEditingStateChange) {
-            onEditingStateChange(true);
-          }
+          onEditingStateChange?.(true);
         }
       };
 
       autocomplete.addEventListener('input', handleInput);
 
-      // GMP-SELECT EVENT: User selected a place
       autocomplete.addEventListener('gmp-select', async ({ placePrediction }: any) => {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[GoogleMapEmbed] ✅ GMP-SELECT: Place selected');
-        }
-
         try {
-          // Convert placePrediction to Place object
           const place = placePrediction.toPlace();
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] Place object created:', place);
-          }
-
-          // Fetch place details
           await place.fetchFields({
             fields: ['displayName', 'formattedAddress', 'location']
           });
 
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] Place details fetched:', {
-              displayName: place.displayName,
-              formattedAddress: place.formattedAddress,
-              location: place.location
-            });
-          }
+          if (!place.location) return;
 
-          if (!place.location) {
-            if (DEBUG_LOCATION_SEARCH) {
-              console.warn('[GoogleMapEmbed] ⚠️ Selected place has no location');
-            }
-            return;
-          }
-
-          // Store as committed place
           committedPlaceRef.current = place;
           editedSinceFocusRef.current = false;
 
@@ -239,142 +151,68 @@ const GoogleMapEmbed = ({
           const shortName = place.displayName || place.formattedAddress || 'Unknown location';
           const fullAddress = place.formattedAddress || place.displayName || 'Unknown location';
 
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] 📝 Short name:', shortName);
-            console.log('[GoogleMapEmbed] 📍 Full address:', fullAddress);
-          }
-
-          // Show marker at selected location with short name
           showMarkerAt(place.location, fullAddress, shortName);
-
-          // Notify parent that editing is complete
-          if (onEditingStateChange) {
-            onEditingStateChange(false);
-          }
-
-          // Notify parent component
-          if (onLocationChange) {
-            if (DEBUG_LOCATION_SEARCH) {
-              console.log('[GoogleMapEmbed] 📢 Notifying parent');
-            }
-            onLocationChange({
-              lat: newLocation.lat,
-              lng: newLocation.lng,
-              shortName: shortName,
-              fullAddress: fullAddress,
-            });
-          }
+          onEditingStateChange?.(false);
+          onLocationChange?.({
+            lat: newLocation.lat,
+            lng: newLocation.lng,
+            shortName: shortName,
+            fullAddress: fullAddress,
+          });
         } catch (error) {
-          console.error('[GoogleMapEmbed] ❌ Error handling place selection:', error);
+          console.error('Error handling place selection:', error);
         }
       });
 
-      // BLUR EVENT: User clicked away
       const handleBlur = () => {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[GoogleMapEmbed] 🔍 BLUR: User clicked away');
-        }
+        if (!editedSinceFocusRef.current) return;
         
-        // If they focused and clicked away without editing, do nothing
-        if (!editedSinceFocusRef.current) {
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] No edits made, keeping current state');
-          }
-          return;
-        }
-
-        // If they edited but didn't select a place
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[GoogleMapEmbed] User edited but did not select');
-        }
-        
-        if (committedPlaceRef.current) {
-          // Option A (conservative): Revert to last valid place
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] 🔄 Reverting to last committed place');
-          }
+        if (committedPlaceRef.current?.location) {
           const lastPlace = committedPlaceRef.current;
-          
-          if (lastPlace.location) {
-            const shortName = lastPlace.displayName || lastPlace.formattedAddress || 'Unknown location';
-            const fullAddress = lastPlace.formattedAddress || lastPlace.displayName || 'Unknown location';
-            showMarkerAt(lastPlace.location, fullAddress, shortName);
-            
-            // Notify parent that editing is complete (reverted)
-            if (onEditingStateChange) {
-              onEditingStateChange(false);
-            }
-            
-            // Notify parent to revert UI
-            if (onLocationChange) {
-              onLocationChange({
-                lat: lastPlace.location.lat(),
-                lng: lastPlace.location.lng(),
-                shortName: shortName,
-                fullAddress: fullAddress,
-              });
-            }
-          }
+          const shortName = lastPlace.displayName || lastPlace.formattedAddress || 'Unknown location';
+          const fullAddress = lastPlace.formattedAddress || lastPlace.displayName || 'Unknown location';
+          showMarkerAt(lastPlace.location, fullAddress, shortName);
+          onEditingStateChange?.(false);
+          onLocationChange?.({
+            lat: lastPlace.location.lat(),
+            lng: lastPlace.location.lng(),
+            shortName: shortName,
+            fullAddress: fullAddress,
+          });
         } else {
-          // Option B (strict): Keep hidden until new selection
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[GoogleMapEmbed] 🙈 No committed place, keeping marker hidden');
-          }
           hideMarker();
-          
-          // Notify parent that we're still waiting
-          if (onEditingStateChange) {
-            onEditingStateChange(true);
-          }
+          onEditingStateChange?.(true);
         }
       };
 
       autocomplete.addEventListener('blur', handleBlur);
 
-      // Store cleanup functions
       (autocomplete as any).__focusHandler = handleFocus;
       (autocomplete as any).__inputHandler = handleInput;
       (autocomplete as any).__blurHandler = handleBlur;
 
-      if (DEBUG_LOCATION_SEARCH) {
-        console.log('[GoogleMapEmbed] ✅ All event listeners attached');
-      }
-
       mountedRef.current = true;
       onLoad();
     } catch (error) {
-      console.error('[GoogleMapEmbed] ❌ Error initializing map:', error);
+      console.error('Error initializing map:', error);
     }
 
-    // Cleanup on unmount
     return () => {
-      if (DEBUG_LOCATION_SEARCH) {
-        console.log('[GoogleMapEmbed] 🧹 Cleaning up map and autocomplete');
-      }
-      
       if (autocompleteRef.current) {
         const focusHandler = (autocompleteRef.current as any).__focusHandler;
         const inputHandler = (autocompleteRef.current as any).__inputHandler;
         const blurHandler = (autocompleteRef.current as any).__blurHandler;
         
-        if (focusHandler) {
-          autocompleteRef.current.removeEventListener('focus', focusHandler);
-        }
-        if (inputHandler) {
-          autocompleteRef.current.removeEventListener('input', inputHandler);
-        }
-        if (blurHandler) {
-          autocompleteRef.current.removeEventListener('blur', blurHandler);
-        }
+        if (focusHandler) autocompleteRef.current.removeEventListener('focus', focusHandler);
+        if (inputHandler) autocompleteRef.current.removeEventListener('input', inputHandler);
+        if (blurHandler) autocompleteRef.current.removeEventListener('blur', blurHandler);
       }
       
       if (autocompleteRef.current && autocompleteContainerRef.current) {
         try {
           autocompleteContainerRef.current.removeChild(autocompleteRef.current);
         } catch (e) {
-          if (DEBUG_LOCATION_SEARCH) {
-            console.warn('[GoogleMapEmbed] ⚠️ Error removing autocomplete:', e);
-          }
+          // Ignore cleanup errors
         }
         autocompleteRef.current = null;
       }
@@ -382,22 +220,17 @@ const GoogleMapEmbed = ({
         markerRef.current.setMap(null);
         markerRef.current = null;
       }
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current = null;
-      }
+      mapInstanceRef.current = null;
       mountedRef.current = false;
     };
   }, [location.lat, location.lng, title]);
 
   return (
     <div className="space-y-3">
-      {/* Map Container */}
       <div 
         ref={containerRef}
         className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 bg-slate-100"
       />
-      
-      {/* Autocomplete Container */}
       <div 
         ref={autocompleteContainerRef}
         className="w-full relative z-[9999]"
@@ -419,67 +252,34 @@ const LocationColumn = ({
 }: LocationColumnProps) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(recognizedLocation || defaultLocation);
-  
-  // Track if user has selected a valid location (overrides error state)
   const [hasValidSelection, setHasValidSelection] = useState(!hasError);
-  
-  // Track invalid location state
   const [invalidLocationText, setInvalidLocationText] = useState<string | null>(
     hasError ? attemptedLocation : null
   );
-
-  // Track display name and marker visibility for status message
   const [displayName, setDisplayName] = useState(defaultLocation.name);
   const [markerVisible, setMarkerVisible] = useState(true);
-  
-  // Track if user is currently editing (typing but hasn't selected)
   const [isEditing, setIsEditing] = useState(false);
 
-  // Notify parent whenever selection state changes
   useEffect(() => {
     const isWaitingForSelection = isEditing || !markerVisible;
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationColumn]', title, '- Selection state:', {
-        isEditing,
-        markerVisible,
-        isWaitingForSelection: isWaitingForSelection,
-        hasValidSelection: !isWaitingForSelection
-      });
-    }
-    
-    if (onSelectionStateChange) {
-      onSelectionStateChange(!isWaitingForSelection);
-    }
-  }, [isEditing, markerVisible, title, onSelectionStateChange]);
+    onSelectionStateChange?.(!isWaitingForSelection);
+  }, [isEditing, markerVisible, onSelectionStateChange]);
 
-  // Determine which location to show on the map
   const mapLocation = currentLocation;
-  const showPlaceMarker = !!recognizedLocation;
 
   const handleLocationChange = (newLocation: { lat: number; lng: number; shortName: string; fullAddress: string }) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationColumn] 📍 Location changed');
-      console.log('[LocationColumn] 📝 Short name:', newLocation.shortName);
-      console.log('[LocationColumn] 📍 Full address:', newLocation.fullAddress);
-    }
-    
-    // Mark that user has selected a valid location (clears error state)
     setHasValidSelection(true);
     setInvalidLocationText(null);
-    
-    // Update display name and marker visibility
     setDisplayName(newLocation.shortName);
     setMarkerVisible(true);
-    setIsEditing(false); // User has completed selection
+    setIsEditing(false);
     
-    // Update map location
     setCurrentLocation({
       lat: newLocation.lat,
       lng: newLocation.lng,
       name: newLocation.fullAddress,
     });
     
-    // Notify parent with full address for navigation
     onLocationChange({
       lat: newLocation.lat,
       lng: newLocation.lng,
@@ -488,33 +288,19 @@ const LocationColumn = ({
   };
 
   const handleInvalidLocation = (attemptedText: string) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationColumn] ⚠️ Invalid location detected:', attemptedText);
-    }
-    
-    // Mark location as invalid
     setHasValidSelection(false);
     setInvalidLocationText(attemptedText);
-    
-    // Notify parent if callback provided
-    if (onInvalidLocation) {
-      onInvalidLocation(attemptedText);
-    }
+    onInvalidLocation?.(attemptedText);
   };
 
   const handleEditingStateChange = (editing: boolean) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationColumn] ✏️ Editing state changed:', editing);
-    }
     setIsEditing(editing);
   };
 
-  // Determine if we should show error message
   const showError = (hasError || !hasValidSelection) && invalidLocationText;
 
   return (
     <div className="flex-1 space-y-6">
-      {/* Column Header */}
       <div className="text-center">
         <h2 className="text-2xl font-medium text-slate-800 mb-2">
           {title}
@@ -522,7 +308,6 @@ const LocationColumn = ({
         <div className="h-1 w-16 bg-gradient-to-r from-blue-600 to-purple-600 mx-auto rounded-full" />
       </div>
 
-      {/* Error Message - Only shown when there's an error */}
       {showError && (
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-red-200 shadow-sm">
           <p className="text-slate-600 text-sm font-light text-center break-words">
@@ -531,7 +316,6 @@ const LocationColumn = ({
         </div>
       )}
 
-      {/* Status Message - Positioned ABOVE the map section */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-slate-200 shadow-sm">
         <div className="text-center">
           {isEditing ? (
@@ -550,13 +334,11 @@ const LocationColumn = ({
         </div>
       </div>
 
-      {/* Google Maps Section - Relative positioning for z-index context */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-200 shadow-sm relative z-10">
         <p className="text-slate-700 text-sm font-medium mb-4">
           Search for a location:
         </p>
         
-        {/* Embedded Google Map with Autocomplete */}
         {!mapLoaded && (
           <div className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center">
             <div className="text-center text-slate-400">
@@ -569,10 +351,9 @@ const LocationColumn = ({
         <div style={{ display: mapLoaded ? 'block' : 'none' }}>
           <GoogleMapEmbed
             location={mapLocation}
-            title={showPlaceMarker ? recognizedLocation!.address : defaultLocation.name}
+            title={defaultLocation.name}
             onLoad={() => setMapLoaded(true)}
             onLocationChange={handleLocationChange}
-            onInvalidLocation={handleInvalidLocation}
             onEditingStateChange={handleEditingStateChange}
           />
         </div>
@@ -585,7 +366,6 @@ export const LocationSearchPage = ({
   sourceError,
   destinationError
 }: LocationSearchPageProps) => {
-  // Default locations
   const defaultSourceLocation = {
     name: 'Trevi Fountain',
     lat: 41.9007576,
@@ -598,12 +378,10 @@ export const LocationSearchPage = ({
     lng: 12.4822975,
   };
 
-  // Parse URL parameters to get initial locations
   const urlParams = new URLSearchParams(window.location.search);
   const srcParam = urlParams.get('src');
   const dstParam = urlParams.get('dst');
 
-  // Initialize locations from URL params or defaults
   const getInitialSourceLocation = () => {
     if (srcParam && !sourceError) {
       const [lat, lng] = srcParam.split(',').map(Number);
@@ -624,23 +402,15 @@ export const LocationSearchPage = ({
     return defaultDestinationLocation;
   };
 
-  // Track current locations for both columns
   const [sourceLocation, setSourceLocation] = useState(getInitialSourceLocation());
   const [destinationLocation, setDestinationLocation] = useState(getInitialDestinationLocation());
-  
-  // Track invalid location states
   const [sourceInvalid, setSourceInvalid] = useState(!!sourceError);
   const [destinationInvalid, setDestinationInvalid] = useState(!!destinationError);
-
-  // Track selection states for both locations
-  const [sourceHasValidSelection, setSourceHasValidSelection] = useState(true); // Start true (default location)
-  const [destinationHasValidSelection, setDestinationHasValidSelection] = useState(true); // Start true (default location)
-
-  // Track route distance
+  const [sourceHasValidSelection, setSourceHasValidSelection] = useState(true);
+  const [destinationHasValidSelection, setDestinationHasValidSelection] = useState(true);
   const [routeDistance, setRouteDistance] = useState<string | null>(null);
   const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
 
-  // Check if both locations are valid and selected (button should be enabled)
   const isButtonEnabled = 
     !sourceError && 
     !destinationError && 
@@ -649,46 +419,16 @@ export const LocationSearchPage = ({
     sourceHasValidSelection && 
     destinationHasValidSelection;
 
-  if (DEBUG_LOCATION_SEARCH) {
-    console.log('[LocationSearchPage] Button state:', {
-      sourceError: !!sourceError,
-      destinationError: !!destinationError,
-      sourceInvalid,
-      destinationInvalid,
-      sourceHasValidSelection,
-      destinationHasValidSelection,
-      isButtonEnabled,
-      routeDistance
-    });
-  }
-
-  // Calculate route distance whenever locations change
   useEffect(() => {
     const calculateDistance = async () => {
-      if (!sourceLocation || !destinationLocation) {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[LocationSearchPage] ⚠️ Missing locations for distance calculation');
-        }
-        return;
-      }
-
-      if (!sourceHasValidSelection || !destinationHasValidSelection) {
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[LocationSearchPage] ⚠️ Waiting for valid location selections');
-        }
+      if (!sourceLocation || !destinationLocation || !sourceHasValidSelection || !destinationHasValidSelection) {
         setRouteDistance(null);
         return;
       }
 
-      if (DEBUG_LOCATION_SEARCH) {
-        console.log('[LocationSearchPage] 📏 Calculating route distance...');
-      }
       setIsCalculatingDistance(true);
 
       try {
-        const origin = `${sourceLocation.lat},${sourceLocation.lng}`;
-        const destination = `${destinationLocation.lat},${destinationLocation.lng}`;
-
         const response = await fetch(
           `https://routes.googleapis.com/directions/v2:computeRoutes`,
           {
@@ -734,37 +474,18 @@ export const LocationSearchPage = ({
         }
 
         const data = await response.json();
-        if (DEBUG_LOCATION_SEARCH) {
-          console.log('[LocationSearchPage] 📊 Routes API response:', data);
-        }
 
-        if (data.routes && data.routes.length > 0) {
+        if (data.routes?.[0]) {
           const distanceMeters = data.routes[0].distanceMeters;
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[LocationSearchPage] 📏 Distance in meters:', distanceMeters);
-          }
-
-          // Format distance
-          let formattedDistance: string;
-          if (distanceMeters < 1000) {
-            formattedDistance = `${Math.round(distanceMeters)}m`;
-          } else {
-            const distanceKm = distanceMeters / 1000;
-            formattedDistance = `${distanceKm.toFixed(1)}km`;
-          }
-
-          if (DEBUG_LOCATION_SEARCH) {
-            console.log('[LocationSearchPage] ✅ Formatted distance:', formattedDistance);
-          }
+          const formattedDistance = distanceMeters < 1000 
+            ? `${Math.round(distanceMeters)}m`
+            : `${(distanceMeters / 1000).toFixed(1)}km`;
           setRouteDistance(formattedDistance);
         } else {
-          if (DEBUG_LOCATION_SEARCH) {
-            console.warn('[LocationSearchPage] ⚠️ No routes found in response');
-          }
           setRouteDistance(null);
         }
       } catch (error) {
-        console.error('[LocationSearchPage] ❌ Error calculating distance:', error);
+        console.error('Error calculating distance:', error);
         setRouteDistance(null);
       } finally {
         setIsCalculatingDistance(false);
@@ -774,7 +495,6 @@ export const LocationSearchPage = ({
     calculateDistance();
   }, [sourceLocation, destinationLocation, sourceHasValidSelection, destinationHasValidSelection]);
 
-  // Popular walking routes with sensible distances
   const popularRoutes = [
     {
       src: 'Trevi Fountain',
@@ -821,39 +541,19 @@ export const LocationSearchPage = ({
   const handleStartExploration = () => {
     if (!isButtonEnabled) return;
 
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] 🚀 Start Exploration clicked');
-      console.log('[LocationSearchPage] 📍 Source:', sourceLocation);
-      console.log('[LocationSearchPage] 📍 Destination:', destinationLocation);
-    }
-
-    // Navigate to preparation phase with current locations and start flag
     const params = new URLSearchParams();
     params.set('src', `${sourceLocation.lat},${sourceLocation.lng}`);
     params.set('dst', `${destinationLocation.lat},${destinationLocation.lng}`);
-    params.set('start', 'true'); // Flag to indicate user wants to start
-    
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
-    }
+    params.set('start', 'true');
     
     window.location.href = `/?${params.toString()}`;
   };
 
   const handleRouteClick = (route: typeof popularRoutes[0]) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] 🗺️ Popular route clicked:', route);
-    }
-    
-    // Navigate to preparation phase with preset route and start flag
     const params = new URLSearchParams();
     params.set('src', `${route.srcCoords.lat},${route.srcCoords.lng}`);
     params.set('dst', `${route.dstCoords.lat},${route.dstCoords.lng}`);
-    params.set('start', 'true'); // Flag to indicate user wants to start
-    
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] 🔄 Navigating to preparation phase with params:', params.toString());
-    }
+    params.set('start', 'true');
     
     window.location.href = `/?${params.toString()}`;
   };
@@ -869,54 +569,31 @@ export const LocationSearchPage = ({
   };
 
   const handleSourceInvalid = (attemptedText: string) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] ⚠️ Source location invalid:', attemptedText);
-    }
     setSourceInvalid(true);
   };
 
   const handleDestinationInvalid = (attemptedText: string) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] ⚠️ Destination location invalid:', attemptedText);
-    }
     setDestinationInvalid(true);
   };
 
   const handleSourceSelectionStateChange = (hasValidSelection: boolean) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] 📍 Source selection state changed:', hasValidSelection);
-    }
     setSourceHasValidSelection(hasValidSelection);
   };
 
   const handleDestinationSelectionStateChange = (hasValidSelection: boolean) => {
-    if (DEBUG_LOCATION_SEARCH) {
-      console.log('[LocationSearchPage] 📍 Destination selection state changed:', hasValidSelection);
-    }
     setDestinationHasValidSelection(hasValidSelection);
   };
 
-  // Determine button text based on state
   const getButtonText = () => {
-    if (!isButtonEnabled) {
-      return 'Please Select Valid Locations';
-    }
-    
-    if (isCalculatingDistance) {
-      return 'Calculating Route...';
-    }
-    
-    if (routeDistance) {
-      return `Explore Your Selected ${routeDistance} Route`;
-    }
-    
+    if (!isButtonEnabled) return 'Please Select Valid Locations';
+    if (isCalculatingDistance) return 'Calculating Route...';
+    if (routeDistance) return `Explore Your Selected ${routeDistance} Route`;
     return 'Start Your Exploration';
   };
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center overflow-y-auto">
       <div className="max-w-6xl mx-auto p-8 w-full">
-        {/* Logo/Icon with Friendly State */}
         <div className="mb-8 flex justify-center">
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-purple-400/20 blur-3xl rounded-full" />
@@ -929,7 +606,6 @@ export const LocationSearchPage = ({
           </div>
         </div>
 
-        {/* Main Heading */}
         <h1 className="text-5xl font-light tracking-tight text-slate-900 text-center mb-12">
 					<span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">You Are Here:</span>&nbsp; 
           {sourceError || destinationError || sourceInvalid || destinationInvalid ? (
@@ -939,14 +615,12 @@ export const LocationSearchPage = ({
           )}
         </h1>
 
-        {/* Two Column Layout */}
         <div className="flex flex-col lg:flex-row gap-8 mb-8">
-          {/* Source Location Column */}
           <LocationColumn
             title="Starting Point"
             hasError={!!sourceError}
             attemptedLocation={sourceError?.attemptedLocation}
-            recognizedLocation={!sourceError && srcParam ? undefined : undefined}
+            recognizedLocation={undefined}
             paramName="src"
             defaultLocation={defaultSourceLocation}
             onLocationChange={handleSourceLocationChange}
@@ -954,15 +628,13 @@ export const LocationSearchPage = ({
             onSelectionStateChange={handleSourceSelectionStateChange}
           />
 
-          {/* Divider */}
           <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent flex-shrink-0" />
 
-          {/* Destination Location Column */}
           <LocationColumn
             title="Destination"
             hasError={!!destinationError}
             attemptedLocation={destinationError?.attemptedLocation}
-            recognizedLocation={!destinationError && dstParam ? undefined : undefined}
+            recognizedLocation={undefined}
             paramName="dst"
             defaultLocation={defaultDestinationLocation}
             onLocationChange={handleDestinationLocationChange}
@@ -971,7 +643,6 @@ export const LocationSearchPage = ({
           />
         </div>
 
-        {/* Start Exploration Button */}
         <button
           onClick={handleStartExploration}
           disabled={!isButtonEnabled}
@@ -996,7 +667,6 @@ export const LocationSearchPage = ({
           </div>
         </button>
 
-        {/* Popular Routes */}
         <div className="w-full">
           <p className="text-slate-600 text-sm font-light mb-4 text-center">
             Or explore these popular walking routes:

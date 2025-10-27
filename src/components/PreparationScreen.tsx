@@ -25,10 +25,7 @@ interface PreparationScreenProps {
 type PreparationStep = 
   | 'generating-descriptions'
   | 'synthesizing-audio'
-  | 'establishing-panorama'
   | 'calculating-route'
-  | 'calculating-points'
-  | 'calculating-markers'
   | 'complete';
 
 export const PreparationScreen = ({
@@ -41,53 +38,26 @@ export const PreparationScreen = ({
   const dispatch = useDispatch();
   const [currentStep, setCurrentStep] = useState<PreparationStep>('generating-descriptions');
   const [progress, setProgress] = useState(0);
-
-  // CRITICAL FIX: Prevent duplicate execution in React Strict Mode
   const hasExecutedRef = useRef(false);
 
-  // CRITICAL FIX: Monitor Redux state to ensure audio data is persisted before transitioning
   const sourceDetails = useSelector((state: RootState) => state.streetView.sourceDetails);
   const destinationDetails = useSelector((state: RootState) => state.streetView.destinationDetails);
   const ttsVoice = useSelector((state: RootState) => state.streetView.ttsVoice);
-  
-  // Get short names from Redux state
   const sourceShortName = useSelector((state: RootState) => state.streetView.currentShortName);
   const destinationShortName = useSelector((state: RootState) => state.streetView.destinationShortName);
   
   const [isPreparationComplete, setIsPreparationComplete] = useState(false);
-
-  // Get Google Maps API key from environment
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // Determine display names (use short names if available, fallback to addresses)
   const displaySourceName = sourceShortName || sourceAddress;
   const displayDestinationName = destinationShortName || destinationAddress;
 
-  console.log('[PreparationScreen] 📝 Display names:', {
-    sourceShortName,
-    destinationShortName,
-    displaySourceName,
-    displayDestinationName,
-  });
-
   useEffect(() => {
-    // CRITICAL FIX: Prevent duplicate execution
-    if (hasExecutedRef.current) {
-      console.log('[PreparationScreen] ⏭️ Skipping duplicate execution (React Strict Mode)');
-      return;
-    }
+    if (hasExecutedRef.current) return;
     hasExecutedRef.current = true;
 
-    console.log('[PreparationScreen] 🚀 PHASE 3: PREPARATION SCREEN');
-    console.log('[PreparationScreen] 📍 Source:', sourceAddress, sourceLocation);
-    console.log('[PreparationScreen] 📍 Destination:', destinationAddress, destinationLocation);
-    console.log('[PreparationScreen] 🎤 TTS Voice:', ttsVoice);
-
-    // Execute preparation steps sequentially
     const executePreparation = async () => {
       try {
-        // CRITICAL FIX: Initialize details objects FIRST
-        console.log('[PreparationScreen] 🔧 Initializing location details objects...');
         dispatch(setSourceDetails({
           description: '',
           name: sourceAddress,
@@ -99,12 +69,9 @@ export const PreparationScreen = ({
           types: [],
         }));
 
-        // Step 1: Generate enhanced descriptions
-        console.log('[PreparationScreen] 🤖 Step 1: Generating enhanced descriptions via OpenAI...');
         setCurrentStep('generating-descriptions');
-        setProgress(5); // Fake a small value to start off with
+        setProgress(5);
 
-        // Generate source description
         const sourceResult = await generateEnhancedDescription(
           sourceAddress,
           `A location at ${sourceAddress}`,
@@ -112,14 +79,10 @@ export const PreparationScreen = ({
         );
 				
         if ('enhancedDescription' in sourceResult) {
-          console.log('[PreparationScreen] ✅ Source description generated');
           dispatch(updateSourceEnhancedDescription(sourceResult.enhancedDescription));
-        } else {
-          console.warn('[PreparationScreen] ⚠️ Source description generation failed:', sourceResult.error);
         }
 				setProgress(15);
 
-        // Generate destination description
         const destResult = await generateEnhancedDescription(
           destinationAddress,
           `A location at ${destinationAddress}`,
@@ -127,131 +90,61 @@ export const PreparationScreen = ({
         );
 
         if ('enhancedDescription' in destResult) {
-          console.log('[PreparationScreen] ✅ Destination description generated');
           dispatch(updateDestinationEnhancedDescription(destResult.enhancedDescription));
-        } else {
-          console.warn('[PreparationScreen] ⚠️ Destination description generation failed:', destResult.error);
         }
 
-        // Step 2: Synthesize audio
-        console.log('[PreparationScreen] 🎤 Step 2: Synthesizing audio via OpenAI TTS...');
-        console.log('[PreparationScreen] 🎤 Using voice:', ttsVoice);
         setCurrentStep('synthesizing-audio');
         setProgress(20);
 
-        // Synthesize source audio using Redux voice setting
         if ('enhancedDescription' in sourceResult) {
           const sourceAudioResult = await synthesizeTextToSpeech(
             sourceResult.enhancedDescription, 
             ttsVoice,
-            sourceAddress // Pass shortName for storage key
+            sourceAddress
           );
           if ('audioUrl' in sourceAudioResult) {
-            console.log('[PreparationScreen] ✅ Source audio synthesized with voice:', ttsVoice);
-            console.log('[PreparationScreen] 📊 Dispatching updateSourceAudio with:', {
-              audioUrl: sourceAudioResult.audioUrl.substring(0, 50) + '...',
-              audioFilename: sourceAudioResult.filename,
-            });
             dispatch(updateSourceAudio({
               audioUrl: sourceAudioResult.audioUrl,
               audioFilename: sourceAudioResult.filename,
             }));
-          } else {
-            console.warn('[PreparationScreen] ⚠️ Source audio synthesis failed:', sourceAudioResult.error);
           }
         }
-				//setProgress(30);
 				setProgress(50);
 				
-        // Synthesize destination audio using Redux voice setting
         if ('enhancedDescription' in destResult) {
           const destAudioResult = await synthesizeTextToSpeech(
             destResult.enhancedDescription, 
             ttsVoice,
-            destinationAddress // Pass shortName for storage key
+            destinationAddress
           );
           if ('audioUrl' in destAudioResult) {
-            console.log('[PreparationScreen] ✅ Destination audio synthesized with voice:', ttsVoice);
-            console.log('[PreparationScreen] 📊 Dispatching updateDestinationAudio with:', {
-              audioUrl: destAudioResult.audioUrl.substring(0, 50) + '...',
-              audioFilename: destAudioResult.filename,
-            });
             dispatch(updateDestinationAudio({
               audioUrl: destAudioResult.audioUrl,
               audioFilename: destAudioResult.filename,
             }));
-          } else {
-            console.warn('[PreparationScreen] ⚠️ Destination audio synthesis failed:', destAudioResult.error);
           }
         }
 
-				/* Not currently doing anything -- logic in StreetViewCanvas still fit for purpose?
-        // Step 3: Establish panorama
-        console.log('[PreparationScreen] 📸 Step 3: Establishing panorama location and heading...');
-        setCurrentStep('establishing-panorama');
-        setProgress(40);
-        await new Promise(resolve => setTimeout(resolve, 500));
-				*/
-				
-        // Step 4: Calculate route
-        console.log('[PreparationScreen] 🗺️ Step 4: Calculating route between locations...');
         setCurrentStep('calculating-route');
-        //setProgress(60);
         setProgress(80);
 
         if (sourceLocation && destinationLocation) {
-          console.log('[PreparationScreen] 📡 Calling fetchWalkingRoute...');
           const routeResult = await fetchWalkingRoute(
             sourceLocation,
             destinationLocation,
             googleMapsApiKey
           );
 
-          if ('error' in routeResult) {
-            console.error('[PreparationScreen] ❌ Route calculation failed:', routeResult.error);
-          } else {
-            console.log('[PreparationScreen] ✅ Route calculated successfully');
-            console.log('[PreparationScreen] 📊 Route summary:', {
-              distanceMeters: routeResult.distanceMeters,
-              duration: routeResult.duration,
-              steps: routeResult.steps.length,
-              polylinePoints: routeResult.decodedPolyline.length,
-            });
-
-            // Dispatch route data to Redux store 
-            console.log('[PreparationScreen] 📊 Dispatching route polyline to Redux store...');
+          if (!('error' in routeResult)) {
             dispatch(setRoutePolyline(routeResult.decodedPolyline));
-            console.log('[PreparationScreen] ✅ Route data stored in Redux');
           }
-        } else {
-          console.warn('[PreparationScreen] ⚠️ Missing source or destination location, skipping route calculation');
         }
-
-				/* not currentlt doing anything! -- logic in StreetViewCanvas still fit for purpose?
-        // Step 5: Calculate points
-        console.log('[PreparationScreen] 📐 Step 5: Calculating interpolated points along route...');
-        setCurrentStep('calculating-points');
-        setProgress(80);
-        await new Promise(resolve => setTimeout(resolve, 500));
-				*/
-				/* Not currently doing anything -- logic in StreetViewCanvas still fit for purpose?
-        // Step 6: Calculate markers
-        console.log('[PreparationScreen] 📍 Step 6: Calculating visible markers...');
-        setCurrentStep('calculating-markers');
-        setProgress(90);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-				*/
 				
-        // Complete
-        console.log('[PreparationScreen] ✅ Preparation complete!');
         setCurrentStep('complete');
         setProgress(100);
-        
-        // CRITICAL FIX: Set flag to trigger transition check
         setIsPreparationComplete(true);
       } catch (error) {
-        console.error('[PreparationScreen] ❌ Error during preparation:', error);
-        // Continue anyway to show panorama
+        console.error('Error during preparation:', error);
         setIsPreparationComplete(true);
       }
     };
@@ -259,35 +152,19 @@ export const PreparationScreen = ({
     executePreparation();
   }, [sourceLocation, destinationLocation, sourceAddress, destinationAddress, dispatch, googleMapsApiKey, ttsVoice]);
 
-  // CRITICAL FIX: Wait for Redux state to update before transitioning
   useEffect(() => {
-    if (!isPreparationComplete) {
-      return;
-    }
+    if (!isPreparationComplete) return;
 
-    console.log('[PreparationScreen] 🔍 Checking if audio data is ready in Redux...');
-    console.log('[PreparationScreen] 📊 Redux state:', {
-      hasSourceAudio: !!sourceDetails?.audioUrl,
-      hasDestinationAudio: !!destinationDetails?.audioUrl,
-      sourceAudioUrl: sourceDetails?.audioUrl?.substring(0, 50),
-      destinationAudioUrl: destinationDetails?.audioUrl?.substring(0, 50),
-    });
-
-    // Check if audio data is available in Redux
     const hasAudioData = sourceDetails?.audioUrl || destinationDetails?.audioUrl;
     
     if (hasAudioData) {
-      console.log('[PreparationScreen] ✅ Audio data confirmed in Redux, transitioning to Phase 4');
       setTimeout(() => {
         onPreparationComplete();
       }, 500);
     } else {
-      console.log('[PreparationScreen] ⏳ Waiting for audio data to be available in Redux...');
-      // Wait a bit longer and check again
       const checkInterval = setInterval(() => {
         const currentHasAudio = sourceDetails?.audioUrl || destinationDetails?.audioUrl;
         if (currentHasAudio) {
-          console.log('[PreparationScreen] ✅ Audio data now available in Redux, transitioning to Phase 4');
           clearInterval(checkInterval);
           setTimeout(() => {
             onPreparationComplete();
@@ -295,10 +172,8 @@ export const PreparationScreen = ({
         }
       }, 100);
 
-      // Timeout after 5 seconds
       setTimeout(() => {
         clearInterval(checkInterval);
-        console.warn('[PreparationScreen] ⚠️ Timeout waiting for audio data, transitioning anyway');
         onPreparationComplete();
       }, 5000);
     }
@@ -310,14 +185,8 @@ export const PreparationScreen = ({
         return 'Generating location descriptions...';
       case 'synthesizing-audio':
         return 'Creating audio narration...';
-      case 'establishing-panorama':
-        return 'Setting up panorama view...';
       case 'calculating-route':
         return 'Calculating your route...';
-      case 'calculating-points':
-        return 'Mapping waypoints...';
-      case 'calculating-markers':
-        return 'Placing location markers...';
       case 'complete':
         return 'Ready to explore!';
     }
@@ -328,11 +197,7 @@ export const PreparationScreen = ({
       case 'generating-descriptions':
       case 'synthesizing-audio':
         return <Loader2 className="w-8 h-8 text-white animate-spin" />;
-      case 'establishing-panorama':
-        return <MapPin className="w-8 h-8 text-white animate-pulse" />;
       case 'calculating-route':
-      case 'calculating-points':
-      case 'calculating-markers':
         return <Route className="w-8 h-8 text-white animate-pulse" />;
       case 'complete':
         return <MapPin className="w-8 h-8 text-white" />;
@@ -340,12 +205,8 @@ export const PreparationScreen = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-gradient-to-br from-slate-50 to-blue-50 z-50 flex items-center justify-center"
-      style={{ zIndex: 9999 }}
-    >
+    <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-blue-50 z-50 flex items-center justify-center">
       <div className="flex flex-col items-center gap-8 px-4 max-w-md w-full">
-        {/* Logo/Icon */}
         <div className="relative">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-3xl rounded-full" />
           <div className="relative bg-gradient-to-br from-blue-600 to-purple-600 p-6 rounded-2xl shadow-2xl">
@@ -353,7 +214,6 @@ export const PreparationScreen = ({
           </div>
         </div>
 
-        {/* Title */}
         <div className="text-center space-y-3">
           <h1 className="text-5xl font-light tracking-tight text-slate-900">
             Preparing <span className="font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Your Journey</span>
@@ -363,7 +223,6 @@ export const PreparationScreen = ({
           </p>
         </div>
 
-        {/* Progress Bar */}
         <div className="w-full space-y-2">
           <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
             <div 
@@ -376,7 +235,6 @@ export const PreparationScreen = ({
           </p>
         </div>
 
-        {/* Location Info - Using Short Names */}
         <div className="w-full space-y-2 bg-white/50 backdrop-blur-sm rounded-xl p-4 border border-slate-200">
           <div className="flex items-start gap-2">
             <MapPin className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
