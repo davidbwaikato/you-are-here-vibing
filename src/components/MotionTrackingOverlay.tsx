@@ -17,7 +17,7 @@ interface MotionTrackingOverlayProps {
 
 export const MotionTrackingOverlay = ({ panoramaRef, onTeleportToMarker }: MotionTrackingOverlayProps) => {
   const dispatch = useDispatch();
-  const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
+  const [isTrackingEnabled, setIsTrackingEnabled] = useState(false);
   const [isSkeletonVisible, setIsSkeletonVisible] = useState(false);
   const [shoulderAngle, setShoulderAngle] = useState<number | null>(null);
   const [webglContextLost, setWebglContextLost] = useState(false);

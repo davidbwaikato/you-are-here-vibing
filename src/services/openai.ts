@@ -4,7 +4,7 @@
 // IMPORTANT: Set to false to disable all OpenAI API calls and avoid costs
 // This is for internal development/testing purposes only
 // When testing non-audio features, set this to false to prevent API charges
-const ENABLE_OPENAI_API_CALLS = false;
+const ENABLE_OPENAI_API_CALLS = true;
 // ============================================================================
 
 export interface EnhancedDescriptionResult {

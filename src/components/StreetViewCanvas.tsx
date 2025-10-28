@@ -7,6 +7,19 @@ import { LocationOverlay } from './LocationOverlay';
 import { ThreeJsCanvas } from './ThreeJsCanvas';
 import { usePositionGeocoding } from '@/hooks/usePositionGeocoding';
 
+
+import {
+  findGoodPanorama,
+  getPanoramaByLocationAsync,
+  ringBearings,
+  generateRingSamples,
+} from '@/utils/panoramaHelper';
+
+
+
+
+
+
 interface StreetViewCanvasProps {
   isGoogleMapsLoaded: boolean;
   sourceLocation: { lat: number; lng: number } | null;
@@ -55,161 +68,144 @@ export const StreetViewCanvas = ({
     }
   }, [destinationLocation, dispatch]);
 
-  useEffect(() => {
-    if (!isGoogleMapsLoaded || !containerRef.current || hasInitializedRef.current) return;
 
-    hasInitializedRef.current = true;
-    shouldCleanupRef.current = false;
 
-    console.log('[StreetView] 🔍 Initializing panorama with StreetViewService...');
+
+
+useEffect(() => {
+  if (!isGoogleMapsLoaded || !containerRef.current || hasInitializedRef.current) return;
+
+  hasInitializedRef.current = true;
+  shouldCleanupRef.current = false;
+
+  (async () => {
+    console.log('[StreetView] 🔍 Initializing panorama with selective search...');
     console.log('[StreetView] 📍 Target position:', position);
 
-    // Use StreetViewService to find nearest panorama and calculate heading
     const streetViewService = new google.maps.StreetViewService();
-    
-    streetViewService.getPanoramaByLocation(
-      new google.maps.LatLng(position.lat, position.lng),
-      50, // Search radius in meters
-      (streetViewPanoramaData, streetViewStatus) => {
-        let panoramaPosition: google.maps.LatLng | google.maps.LatLngLiteral;
-        let panoramaPOV: google.maps.StreetViewPov;
+    const targetLatLng = new google.maps.LatLng(position.lat, position.lng);
 
-        if (streetViewStatus === google.maps.StreetViewStatus.OK && streetViewPanoramaData) {
-          // SUCCESS: Found a nearby panorama
-          const panoramaCoords = streetViewPanoramaData.location!.latLng!;
-          
-          console.log('[StreetView] ✅ Panorama found!');
-          console.log('[StreetView] 📍 Panorama location:', {
-            lat: panoramaCoords.lat(),
-            lng: panoramaCoords.lng(),
-          });
-          console.log('[StreetView] 📍 Target location:', position);
+    // 1) Find a "good" panorama (>=2 links) nearest to target; fallback to naive nearest
+    const goodPano = await findGoodPanorama(streetViewService, targetLatLng, {
+      radii: [0, 25, 50, 75, 100, 150, 200],
+      segmentsPerRing: [1, 8, 8, 12, 12, 16, 16],
+      panoLookupRadius: 50,
+      minLinks: 2,
+      maxPerBatch: 16,
+    });
 
-          // Calculate heading from panorama to target location
-          const heading = google.maps.geometry.spherical.computeHeading(
-            panoramaCoords,
-            new google.maps.LatLng(position.lat, position.lng)
-          );
+    let panoramaPosition: google.maps.LatLng | google.maps.LatLngLiteral;
+    let panoramaPOV: google.maps.StreetViewPov;
 
-          console.log('[StreetView] 🧭 Computed heading:', heading.toFixed(2), '°');
+    if (goodPano && goodPano.location?.latLng) {
+      const panoLatLng = goodPano.location.latLng;
+      console.log('[StreetView] ✅ Selected panorama:', {
+        lat: panoLatLng.lat(),
+        lng: panoLatLng.lng(),
+        links: goodPano.links?.length ?? 0,
+        description: goodPano.location?.description,
+        copyright: goodPano.copyright,
+      });
 
-          // Calculate distance offset
-          const distance = google.maps.geometry.spherical.computeDistanceBetween(
-            panoramaCoords,
-            new google.maps.LatLng(position.lat, position.lng)
-          );
+      // 2) Compute heading from chosen pano to the intended target
+      const heading = google.maps.geometry.spherical.computeHeading(
+        panoLatLng,
+        targetLatLng
+      );
 
-          console.log('[StreetView] 📏 Distance from target:', distance.toFixed(2), 'meters');
+      const distance = google.maps.geometry.spherical.computeDistanceBetween(
+        panoLatLng,
+        targetLatLng
+      );
 
-          panoramaPosition = panoramaCoords;
-          panoramaPOV = {
-            heading: heading,
-            pitch: 0.00, // Level view
-          };
+      console.log('[StreetView] 🧭 Heading:', heading.toFixed(2), '°');
+      console.log('[StreetView] 📏 Distance:', distance.toFixed(1), 'm');
 
-          // Update Redux with actual panorama position and computed heading
-          dispatch(setPosition({
-            lat: panoramaCoords.lat(),
-            lng: panoramaCoords.lng(),
-          }));
-          
-          dispatch(setPov({
-            heading: heading,
-            pitch: 0.00,
-            source: 'initial',
-          }));
+      panoramaPosition = panoLatLng;
+      panoramaPOV = { heading, pitch: 0.0 };
 
-          console.log('[StreetView] 🎯 Initial POV set (INITIAL):', {
-            heading: heading.toFixed(2),
-            pitch: '0.00',
-            source: 'StreetViewService + computeHeading',
-          });
-        } else {
-          // FALLBACK: No panorama found, use original position and POV
-          console.warn('[StreetView] ⚠️ No panorama found within 50m radius');
-          console.log('[StreetView] 🔄 Falling back to original position and POV');
-          
-          panoramaPosition = position;
-          panoramaPOV = pov;
-        }
+      // Store the **actual** pano coords + POV we’ll use
+      dispatch(setPosition({ lat: panoLatLng.lat(), lng: panoLatLng.lng() }));
+      dispatch(setPov({ heading, pitch: 0.0, source: 'initial' }));
+    } else {
+      console.warn('[StreetView] ⚠️ No panorama found by selective search; falling back');
+      panoramaPosition = position;
+      panoramaPOV = pov;
+    }
 
-        // Initialize the StreetViewPanorama with computed values
-        const panorama = new google.maps.StreetViewPanorama(containerRef.current!, {
-          position: panoramaPosition,
-          pov: panoramaPOV,
-          zoom,
-          addressControl: false,
-          linksControl: false,
-          panControl: false,
-          enableCloseButton: false,
-          fullscreenControl: false,
-          motionTracking: false,
-          motionTrackingControl: false,
-          showRoadLabels: false,
-          zoomControl: false,
-          clickToGo: true,
-          scrollwheel: true,
-          disableDefaultUI: true,
-          imageDateControl: false,
-        });
+    // 3) Initialize the StreetViewPanorama
+    const panorama = new google.maps.StreetViewPanorama(containerRef.current!, {
+      position: panoramaPosition,
+      pov: panoramaPOV,
+      zoom,
+      addressControl: false,
+      linksControl: false,
+      panControl: false,
+      enableCloseButton: false,
+      fullscreenControl: false,
+      motionTracking: false,
+      motionTrackingControl: false,
+      showRoadLabels: false,
+      zoomControl: false,
+      clickToGo: true,
+      scrollwheel: true,
+      disableDefaultUI: true,
+      imageDateControl: false,
+    });
 
-        panoramaRef.current = panorama;
+    panoramaRef.current = panorama;
+      console.log("[StreetView] **** adding in panorama and panoramaHTML into 'window'");
+      window.panorama = panorama;
+      window.panoramaHTML = containerRef.current;
+      
+    console.log('[StreetView] 🎬 Panorama initialized with:', {
+      position: panoramaPosition instanceof google.maps.LatLng
+        ? { lat: panoramaPosition.lat(), lng: panoramaPosition.lng() }
+        : panoramaPosition,
+      pov: panoramaPOV,
+      zoom,
+    });
 
-        console.log('[StreetView] 🎬 Panorama initialized with:', {
-          position: panoramaPosition instanceof google.maps.LatLng 
-            ? { lat: panoramaPosition.lat(), lng: panoramaPosition.lng() }
-            : panoramaPosition,
-          pov: panoramaPOV,
-          zoom,
-        });
-
-        // Set up event listeners
-        panorama.addListener('position_changed', () => {
-          const newPosition = panorama.getPosition();
-          if (newPosition) {
-            const lat = newPosition.lat();
-            const lng = newPosition.lng();
-            dispatch(setPosition({ lat, lng }));
-          }
-        });
-
-        panorama.addListener('pov_changed', () => {
-          if (isUpdatingPovRef.current) return;
-          const newPov = panorama.getPov();
-          console.log('[StreetView] 🖱️ POV changed by MOUSE:', {
-            heading: newPov.heading.toFixed(2),
-            pitch: newPov.pitch.toFixed(2),
-          });
-          dispatch(setPov({ 
-            heading: newPov.heading, 
-            pitch: newPov.pitch,
-            source: 'mouse',
-          }));
-        });
-
-        panorama.addListener('zoom_changed', () => {
-          const newZoom = panorama.getZoom();
-          dispatch(setZoom(newZoom));
-        });
-
-        panorama.addListener('status_changed', () => {
-          const status = panorama.getStatus();
-          if (status === 'OK') {
-            dispatch(setLoaded(true));
-            setIsPanoramaReady(true);
-            shouldCleanupRef.current = true;
-            console.log('[StreetView] ✅ Panorama ready and loaded');
-          }
-        });
+    // 4) Event listeners (unchanged)
+    panorama.addListener('position_changed', () => {
+      const newPosition = panorama.getPosition();
+      if (newPosition) {
+        dispatch(setPosition({ lat: newPosition.lat(), lng: newPosition.lng() }));
       }
-    );
+    });
 
-    return () => {
-      if (shouldCleanupRef.current && panoramaRef.current) {
-        google.maps.event.clearInstanceListeners(panoramaRef.current);
+    panorama.addListener('pov_changed', () => {
+      if (isUpdatingPovRef.current) return;
+      const newPov = panorama.getPov();
+      console.log('[StreetView] 🖱️ POV changed by MOUSE:', {
+        heading: newPov.heading.toFixed(2),
+        pitch: newPov.pitch.toFixed(2),
+      });
+      dispatch(setPov({ heading: newPov.heading, pitch: newPov.pitch, source: 'mouse' }));
+    });
+
+    panorama.addListener('zoom_changed', () => {
+      dispatch(setZoom(panorama.getZoom()));
+    });
+
+    panorama.addListener('status_changed', () => {
+      const status = panorama.getStatus();
+      if (status === 'OK') {
+        dispatch(setLoaded(true));
+        setIsPanoramaReady(true);
+        shouldCleanupRef.current = true;
+        console.log('[StreetView] ✅ Panorama ready and loaded');
       }
-    };
-  }, [isGoogleMapsLoaded, position, pov, zoom, dispatch]);
+    });
+  })();
+
+  return () => {
+    if (shouldCleanupRef.current && panoramaRef.current) {
+      google.maps.event.clearInstanceListeners(panoramaRef.current);
+    }
+  };
+}, [isGoogleMapsLoaded, position, pov, zoom, dispatch]);
+
 
   useEffect(() => {
     if (!panoramaRef.current || !isPanoramaReady) return;
@@ -237,13 +233,13 @@ export const StreetViewCanvas = ({
       isUpdatingPovRef.current = false;
     }, 50);
   }, [pov, isPanoramaReady]);
-
+/*
   useEffect(() => {
     if (!panoramaRef.current || !sourceLocation || hasSourceError || !isPanoramaReady) return;
     console.log('[StreetView] 🚀 Teleporting to source location (TELEPORT)');
     panoramaRef.current.setPosition(sourceLocation);
   }, [sourceLocation, hasSourceError, isPanoramaReady]);
-
+*/
   const handleTeleportCallback = (teleportFn: (markerIndex: number) => void) => {
     teleportCallbackRef.current = teleportFn;
   };

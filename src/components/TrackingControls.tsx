@@ -180,7 +180,7 @@ export const TrackingControls = ({
           )}
 
           {/* POV Heading Display */}
-          {isCameraActive && isInitialized && (
+          {/*isCameraActive && isInitialized && ( */}
             <div 
               ref={povHeadingRef}
               className="bg-black/70 text-white px-4 py-2 rounded-lg shadow-lg"
@@ -189,7 +189,7 @@ export const TrackingControls = ({
                 POV Heading: {formatAngle(heading)}°
               </div>
             </div>
-          )}
+          {/*)*/}
 
           {/* Shoulder Rotation Display - Always visible when camera active and initialized */}
           {isCameraActive && isInitialized && (
