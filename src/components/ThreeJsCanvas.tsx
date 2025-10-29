@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { setPosition, setPov, setSelectedMarkerIndex } from '@/store/streetViewSlice';
 import { useRoutePolyline } from '@/hooks/useRoutePolyline';
-import { interpolatePolyline, getVisibleMarkers } from '@/utils/geoUtils';
+import { interpolatePolyline, getVisibleMarkers, calculateDistance } from '@/utils/geoUtils';
 import { polylineTo3D, latLngTo3D } from '@/utils/coordinateConversion';
 import { 
   MAX_INTERPOLATION_SPACING, 
@@ -40,6 +40,9 @@ const STREET_VIEW_EYE_LEVEL = 1.7;
 // CRITICAL: Arrow height above ground (independent of camera pitch)
 // This ensures arrows always appear at ground level in world space
 const ARROW_GROUND_HEIGHT = -STREET_VIEW_EYE_LEVEL + 0.5; // 0.5m above actual ground
+
+// Forward movement distance in meters
+const FORWARD_MOVEMENT_DISTANCE = 50;
 
 export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProps) => {
   const dispatch = useDispatch();
@@ -229,7 +232,7 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
   }, [isReady]);
 
   // Shared teleport logic
-  const performTeleport = (triggerSource: 'ENTER_KEY' | 'MIDDLE_MOUSE_RELEASE' | 'CALLBACK', markerIndexOverride?: number) => {
+  const performTeleport = (triggerSource: 'ENTER_KEY' | 'MIDDLE_MOUSE_RELEASE' | 'CALLBACK' | 'NUMBER_KEY', markerIndexOverride?: number) => {
     const markerIndex = markerIndexOverride !== undefined ? markerIndexOverride : selectedMarkerIndex;
     
     console.log(`[ThreeJS] 🚀 Teleport triggered by: ${triggerSource}`, {
@@ -282,6 +285,165 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
     dispatch(setPov({ 
       heading: selectedMarker.heading, 
       pitch: 0
+    }));
+
+    return true;
+  };
+
+  /**
+   * Move user forward 50 meters along the interpolated route
+   * 
+   * Algorithm:
+   * 1. Get user's current position from Redux store
+   * 2. Find closest point on interpolated route to user's position
+   * 3. Calculate accumulated distance along route from closest point
+   * 4. Find position 50 meters forward along route toward destination
+   * 5. Calculate heading from new position to next point on route
+   * 6. Dispatch new position and heading to Redux store
+   * 
+   * @returns true if move was successful, false otherwise
+   */
+  const performMoveForward = (): boolean => {
+    console.log('[ThreeJS] 🏃 performMoveForward() called');
+
+    // Check if we have a valid route
+    if (!hasRoute || routePolyline.length < 2) {
+      console.log('[ThreeJS] ⚠️ Cannot move forward - no valid route available:', {
+        hasRoute,
+        routePointCount: routePolyline.length,
+      });
+      return false;
+    }
+
+    // Get interpolated route with consistent spacing
+    const interpolatedRoute = interpolatePolyline(routePolyline, MAX_INTERPOLATION_SPACING);
+    
+    if (interpolatedRoute.points.length < 2) {
+      console.log('[ThreeJS] ⚠️ Cannot move forward - interpolated route too short:', {
+        pointCount: interpolatedRoute.points.length,
+      });
+      return false;
+    }
+
+    console.log('[ThreeJS] 📍 Current user position:', position);
+    console.log('[ThreeJS] 🗺️ Interpolated route:', {
+      totalPoints: interpolatedRoute.points.length,
+      totalDistance: interpolatedRoute.totalDistance.toFixed(2) + 'm',
+      averageSpacing: (interpolatedRoute.totalDistance / (interpolatedRoute.points.length - 1)).toFixed(2) + 'm',
+    });
+
+    // STEP 1: Find closest point on route to user's current position
+    let closestPointIndex = -1;
+    let closestDistance = Infinity;
+
+    for (let i = 0; i < interpolatedRoute.points.length; i++) {
+      const routePoint = interpolatedRoute.points[i];
+      const distance = calculateDistance(position, routePoint);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestPointIndex = i;
+      }
+    }
+
+    if (closestPointIndex === -1) {
+      console.log('[ThreeJS] ❌ Failed to find closest point on route');
+      return false;
+    }
+
+    console.log('[ThreeJS] 🎯 Closest point on route found:', {
+      index: closestPointIndex,
+      totalPoints: interpolatedRoute.points.length,
+      distanceFromUser: closestDistance.toFixed(2) + 'm',
+      closestPoint: interpolatedRoute.points[closestPointIndex],
+    });
+
+    // STEP 2: Calculate accumulated distance along route from closest point
+    // We need to find a point 50 meters forward along the route
+    let accumulatedDistance = 0;
+    let targetPointIndex = closestPointIndex;
+
+    for (let i = closestPointIndex; i < interpolatedRoute.points.length - 1; i++) {
+      const currentPoint = interpolatedRoute.points[i];
+      const nextPoint = interpolatedRoute.points[i + 1];
+      const segmentDistance = calculateDistance(currentPoint, nextPoint);
+
+      if (accumulatedDistance + segmentDistance >= FORWARD_MOVEMENT_DISTANCE) {
+        // We've found the segment containing our target point
+        const remainingDistance = FORWARD_MOVEMENT_DISTANCE - accumulatedDistance;
+        const fraction = remainingDistance / segmentDistance;
+
+        // Interpolate position within this segment
+        const newLat = currentPoint.lat + (nextPoint.lat - currentPoint.lat) * fraction;
+        const newLng = currentPoint.lng + (nextPoint.lng - currentPoint.lng) * fraction;
+
+        const newPosition = { lat: newLat, lng: newLng };
+
+        // Calculate heading from new position to next point
+        const heading = google.maps.geometry.spherical.computeHeading(
+          new google.maps.LatLng(newPosition.lat, newPosition.lng),
+          new google.maps.LatLng(nextPoint.lat, nextPoint.lng)
+        );
+
+        console.log('[ThreeJS] ✅ Forward movement calculated:', {
+          closestPointIndex,
+          targetSegmentIndex: i,
+          accumulatedDistance: accumulatedDistance.toFixed(2) + 'm',
+          remainingDistance: remainingDistance.toFixed(2) + 'm',
+          segmentDistance: segmentDistance.toFixed(2) + 'm',
+          interpolationFraction: fraction.toFixed(3),
+          newPosition,
+          newHeading: heading.toFixed(2) + '°',
+        });
+
+        // STEP 3: Dispatch new position and heading to Redux store
+        console.log('[ThreeJS] 📤 Dispatching new position to Redux:', newPosition);
+        dispatch(setPosition(newPosition));
+
+        console.log('[ThreeJS] 📤 Dispatching new heading to Redux:', {
+          heading: heading,
+          pitch: 0,
+        });
+        dispatch(setPov({
+          heading: heading,
+          pitch: 0,
+        }));
+
+        console.log('[ThreeJS] ✅ Forward movement complete!');
+        return true;
+      }
+
+      accumulatedDistance += segmentDistance;
+      targetPointIndex = i + 1;
+    }
+
+    // If we reach here, we've reached the end of the route
+    console.log('[ThreeJS] 🏁 Reached end of route - cannot move forward 50m:', {
+      closestPointIndex,
+      lastPointIndex: interpolatedRoute.points.length - 1,
+      accumulatedDistance: accumulatedDistance.toFixed(2) + 'm',
+      requestedDistance: FORWARD_MOVEMENT_DISTANCE + 'm',
+      shortfall: (FORWARD_MOVEMENT_DISTANCE - accumulatedDistance).toFixed(2) + 'm',
+    });
+
+    // Move to the last point on the route instead
+    const lastPoint = interpolatedRoute.points[interpolatedRoute.points.length - 1];
+    const secondLastPoint = interpolatedRoute.points[interpolatedRoute.points.length - 2];
+
+    const heading = google.maps.geometry.spherical.computeHeading(
+      new google.maps.LatLng(secondLastPoint.lat, secondLastPoint.lng),
+      new google.maps.LatLng(lastPoint.lat, lastPoint.lng)
+    );
+
+    console.log('[ThreeJS] 🏁 Moving to final destination:', {
+      position: lastPoint,
+      heading: heading.toFixed(2) + '°',
+    });
+
+    dispatch(setPosition(lastPoint));
+    dispatch(setPov({
+      heading: heading,
+      pitch: 0,
     }));
 
     return true;
@@ -375,30 +537,60 @@ export const ThreeJsCanvas = ({ isReady, onTeleportToMarker }: ThreeJsCanvasProp
     };
   }, [dispatch, selectedMarkerIndex]);
 
-  // Setup Enter key teleport feature
+  // Setup keyboard navigation: Enter for teleport, Space for move forward, Number keys (1-9) for direct marker teleport
   useEffect(() => {
-    console.log('[ThreeJS] ⌨️ Setting up Enter key teleport...');
+    console.log('[ThreeJS] ⌨️ Setting up keyboard navigation (Enter = teleport, Space = move forward, 1-9 = direct marker teleport)...');
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter') {
+      // Handle Enter key - teleport to selected marker
+      if (event.key === 'Enter') {
+        console.log('[ThreeJS] ⌨️ Enter key detected! Starting teleport...');
+
+        const success = performTeleport('ENTER_KEY');
+
+        if (success) {
+          event.preventDefault();
+        }
         return;
       }
 
-      console.log('[ThreeJS] ⌨️ Enter key detected! Starting teleport...');
+      // Handle Space key - move forward 50m along route
+      if (event.key === ' ' || event.code === 'Space') {
+        console.log('[ThreeJS] ⌨️ Space key detected! Moving forward 50m...');
 
-      const success = performTeleport('ENTER_KEY');
-      
-      if (success) {
-        event.preventDefault();
+        const success = performMoveForward();
+
+        if (success) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // Handle number keys 1-9 - direct teleport to marker at index (key - 1)
+      if (event.key >= '1' && event.key <= '9') {
+        const markerIndex = parseInt(event.key) - 1; // Convert '1' -> 0, '2' -> 1, etc.
+        
+        console.log('[ThreeJS] ⌨️ Number key detected! Teleporting to marker:', {
+          key: event.key,
+          targetMarkerIndex: markerIndex,
+          availableMarkers: visibleMarkersRef.current.length,
+        });
+
+        const success = performTeleport('NUMBER_KEY', markerIndex);
+
+        if (success) {
+          event.preventDefault();
+        }
+        return;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
 
-    console.log('[ThreeJS] ✅ Enter key listener attached to document');
+    console.log('[ThreeJS] ✅ Keyboard navigation listeners attached to document');
 
     return () => {
-      console.log('[ThreeJS] 🧹 Removing Enter key listener');
+      console.log('[ThreeJS] 🧹 Removing keyboard navigation listeners');
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [dispatch, selectedMarkerIndex]);
