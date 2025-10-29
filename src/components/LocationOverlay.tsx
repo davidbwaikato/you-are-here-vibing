@@ -1,13 +1,74 @@
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
 import { MapPin, Navigation } from 'lucide-react';
+import { useMemo } from 'react';
+
+/**
+ * Format distance in appropriate units (meters or kilometers)
+ */
+const formatDistance = (distanceMeters: number): string => {
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)}m`;
+  }
+  return `${(distanceMeters / 1000).toFixed(1)}km`;
+};
+
+/**
+ * Calculate distance between two LatLng points using Haversine formula
+ */
+const calculateDistance = (
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number => {
+  const R = 6371000; // Earth's radius in meters
+  const lat1Rad = (lat1 * Math.PI) / 180;
+  const lat2Rad = (lat2 * Math.PI) / 180;
+  const deltaLat = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLng = ((lng2 - lng1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1Rad) *
+      Math.cos(lat2Rad) *
+      Math.sin(deltaLng / 2) *
+      Math.sin(deltaLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+
+  return distance;
+};
 
 export const LocationOverlay = () => {
-  const { currentShortName, destinationShortName } = useSelector((state: RootState) => state.streetView);
+  const { 
+    currentShortName, 
+    destinationShortName,
+    position,
+    destinationLocation 
+  } = useSelector((state: RootState) => state.streetView);
+
+  // Calculate distance from current position to destination
+  const distanceText = useMemo(() => {
+    if (!destinationLocation) {
+      return null;
+    }
+
+    const distance = calculateDistance(
+      position.lat,
+      position.lng,
+      destinationLocation.lat,
+      destinationLocation.lng
+    );
+
+    return formatDistance(distance);
+  }, [position, destinationLocation]);
 
   console.log('[LocationOverlay] 📍 Rendering with:', {
     currentShortName,
     destinationShortName,
+    distanceText,
   });
 
   return (
@@ -56,6 +117,9 @@ export const LocationOverlay = () => {
               </div>
               <div className="text-sm font-light text-slate-900">
                 <span className="font-medium">Destination:</span> {destinationShortName}
+                {distanceText && (
+                  <span className="ml-1 text-slate-600">({distanceText})</span>
+                )}
               </div>
             </div>
           </div>

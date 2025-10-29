@@ -362,6 +362,16 @@ const LocationColumn = ({
   );
 };
 
+/**
+ * Format distance in appropriate units (meters or kilometers)
+ */
+const formatDistance = (distanceMeters: number): string => {
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)}m`;
+  }
+  return `${(distanceMeters / 1000).toFixed(1)}km`;
+};
+
 export const LocationSearchPage = ({ 
   sourceError,
   destinationError
@@ -409,7 +419,14 @@ export const LocationSearchPage = ({
   const [sourceHasValidSelection, setSourceHasValidSelection] = useState(true);
   const [destinationHasValidSelection, setDestinationHasValidSelection] = useState(true);
   const [routeDistance, setRouteDistance] = useState<string | null>(null);
+  const [routeDistanceMeters, setRouteDistanceMeters] = useState<number | null>(null);
   const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+
+  const MAX_ROUTE_DISTANCE_KM = 3;
+  const MAX_ROUTE_DISTANCE_METERS = MAX_ROUTE_DISTANCE_KM * 1000;
+
+  const isRouteWithinLimit = routeDistanceMeters !== null && routeDistanceMeters <= MAX_ROUTE_DISTANCE_METERS;
+  const isRouteExceedingLimit = routeDistanceMeters !== null && routeDistanceMeters > MAX_ROUTE_DISTANCE_METERS;
 
   const isButtonEnabled = 
     !sourceError && 
@@ -417,12 +434,14 @@ export const LocationSearchPage = ({
     !sourceInvalid && 
     !destinationInvalid && 
     sourceHasValidSelection && 
-    destinationHasValidSelection;
+    destinationHasValidSelection &&
+    isRouteWithinLimit;
 
   useEffect(() => {
     const calculateDistance = async () => {
       if (!sourceLocation || !destinationLocation || !sourceHasValidSelection || !destinationHasValidSelection) {
         setRouteDistance(null);
+        setRouteDistanceMeters(null);
         return;
       }
 
@@ -477,16 +496,17 @@ export const LocationSearchPage = ({
 
         if (data.routes?.[0]) {
           const distanceMeters = data.routes[0].distanceMeters;
-          const formattedDistance = distanceMeters < 1000 
-            ? `${Math.round(distanceMeters)}m`
-            : `${(distanceMeters / 1000).toFixed(1)}km`;
+          const formattedDistance = formatDistance(distanceMeters);
           setRouteDistance(formattedDistance);
+          setRouteDistanceMeters(distanceMeters);
         } else {
           setRouteDistance(null);
+          setRouteDistanceMeters(null);
         }
       } catch (error) {
         console.error('Error calculating distance:', error);
         setRouteDistance(null);
+        setRouteDistanceMeters(null);
       } finally {
         setIsCalculatingDistance(false);
       }
@@ -585,9 +605,21 @@ export const LocationSearchPage = ({
   };
 
   const getButtonText = () => {
-    if (!isButtonEnabled) return 'Please Select Valid Locations';
-    if (isCalculatingDistance) return 'Calculating Route...';
-    if (routeDistance) return `Explore Your Selected ${routeDistance} Route`;
+    if (!sourceHasValidSelection || !destinationHasValidSelection) {
+      return 'Please Select Valid Locations';
+    }
+    if (sourceError || destinationError || sourceInvalid || destinationInvalid) {
+      return 'Please Select Valid Locations';
+    }
+    if (isCalculatingDistance) {
+      return 'Calculating Route...';
+    }
+    if (isRouteExceedingLimit && routeDistance) {
+      return `Current Route of ${routeDistance} Exceeds the ${MAX_ROUTE_DISTANCE_KM}km Limit`;
+    }
+    if (routeDistance) {
+      return `Explore Your Selected ${routeDistance} Route`;
+    }
     return 'Start Your Exploration';
   };
 
