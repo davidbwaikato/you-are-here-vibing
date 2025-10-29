@@ -71,7 +71,8 @@ export async function findGoodPanorama(
   } = options || {};
 
   const samples = generateRingSamples(target, radii, segmentsPerRing);
-
+  const copyrightRegex = /^©.*Google/;
+	
   for (let i = 0; i < samples.length; i += maxPerBatch) {
     const batch = samples.slice(i, i + maxPerBatch);
 
@@ -83,7 +84,12 @@ export async function findGoodPanorama(
     for (const r of results) {
       if (r.status === google.maps.StreetViewStatus.OK && r.data?.location?.latLng) {
         const linksCount = r.data.links?.length ?? 0;
-        if (linksCount >= minLinks) candidates.push(r.data);
+				const copyright = r.data.copyright ?? "";
+				const matchesCopyright = copyrightRegex.test(copyright);
+				
+        if (linksCount >= minLinks && matchesCopyright) {
+					candidates.push(r.data);
+				}
       }
     }
 
