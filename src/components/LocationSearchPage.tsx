@@ -1,5 +1,6 @@
 import { MapPin, ArrowRight } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
+import { fetchWalkingRoute, RouteResult } from '@/services/routing';
 
 export interface LocationError {
   attemptedLocation: string;
@@ -21,6 +22,7 @@ interface LocationColumnProps {
   onLocationChange: (location: { lat: number; lng: number; address: string }) => void;
   onInvalidLocation?: (attemptedText: string) => void;
   onSelectionStateChange?: (hasValidSelection: boolean) => void;
+  routePolyline?: { lat: number; lng: number }[];
 }
 
 const GoogleMapEmbed = ({ 
@@ -28,19 +30,22 @@ const GoogleMapEmbed = ({
   title,
   onLoad,
   onLocationChange,
-  onEditingStateChange
+  onEditingStateChange,
+  routePolyline
 }: { 
   location: { lat: number; lng: number }; 
   title: string;
   onLoad: () => void;
   onLocationChange?: (location: { lat: number; lng: number; shortName: string; fullAddress: string }) => void;
   onEditingStateChange?: (isEditing: boolean) => void;
+  routePolyline?: { lat: number; lng: number }[];
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const autocompleteContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
   const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
   const mountedRef = useRef(false);
   
   const committedPlaceRef = useRef<google.maps.places.Place | null>(null);
@@ -48,6 +53,43 @@ const GoogleMapEmbed = ({
   const [markerVisible, setMarkerVisible] = useState(true);
   const [displayName, setDisplayName] = useState(title);
   const lastLocationRef = useRef({ lat: location.lat, lng: location.lng });
+
+  // Update route polyline when it changes
+  useEffect(() => {
+    if (!mapInstanceRef.current || !routePolyline || routePolyline.length === 0) {
+      // Remove existing polyline if no route
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+      return;
+    }
+
+    console.log('[GoogleMapEmbed] 🗺️ Updating route polyline:', {
+      pointCount: routePolyline.length,
+      firstPoint: routePolyline[0],
+      lastPoint: routePolyline[routePolyline.length - 1],
+    });
+
+    // Remove existing polyline
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+    }
+
+    // Create new polyline
+    const polyline = new google.maps.Polyline({
+      path: routePolyline.map(point => ({ lat: point.lat, lng: point.lng })),
+      geodesic: true,
+      strokeColor: '#3B82F6', // Blue color
+      strokeOpacity: 0.8,
+      strokeWeight: 4,
+      map: mapInstanceRef.current,
+    });
+
+    polylineRef.current = polyline;
+
+    console.log('[GoogleMapEmbed] ✅ Route polyline added to map');
+  }, [routePolyline]);
 
   useEffect(() => {
     if (!window.google?.maps || !containerRef.current || !autocompleteContainerRef.current) return;
@@ -198,6 +240,12 @@ const GoogleMapEmbed = ({
     }
 
     return () => {
+      // Clean up polyline
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+
       if (autocompleteRef.current) {
         const focusHandler = (autocompleteRef.current as any).__focusHandler;
         const inputHandler = (autocompleteRef.current as any).__inputHandler;
@@ -248,7 +296,8 @@ const LocationColumn = ({
   defaultLocation,
   onLocationChange,
   onInvalidLocation,
-  onSelectionStateChange
+  onSelectionStateChange,
+  routePolyline
 }: LocationColumnProps) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(recognizedLocation || defaultLocation);
@@ -355,6 +404,7 @@ const LocationColumn = ({
             onLoad={() => setMapLoaded(true)}
             onLocationChange={handleLocationChange}
             onEditingStateChange={handleEditingStateChange}
+            routePolyline={routePolyline}
           />
         </div>
       </div>
@@ -421,6 +471,7 @@ export const LocationSearchPage = ({
   const [routeDistance, setRouteDistance] = useState<string | null>(null);
   const [routeDistanceMeters, setRouteDistanceMeters] = useState<number | null>(null);
   const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+  const [routePolyline, setRoutePolyline] = useState<{ lat: number; lng: number }[]>([]);
 
   const MAX_ROUTE_DISTANCE_KM = 3;
   const MAX_ROUTE_DISTANCE_METERS = MAX_ROUTE_DISTANCE_KM * 1000;
@@ -438,81 +489,56 @@ export const LocationSearchPage = ({
     isRouteWithinLimit;
 
   useEffect(() => {
-    const calculateDistance = async () => {
+    const calculateRoute = async () => {
       if (!sourceLocation || !destinationLocation || !sourceHasValidSelection || !destinationHasValidSelection) {
         setRouteDistance(null);
         setRouteDistanceMeters(null);
+        setRoutePolyline([]);
         return;
       }
 
       setIsCalculatingDistance(true);
 
       try {
-        const response = await fetch(
-          `https://routes.googleapis.com/directions/v2:computeRoutes`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Goog-Api-Key': import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-              'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
-            },
-            body: JSON.stringify({
-              origin: {
-                location: {
-                  latLng: {
-                    latitude: sourceLocation.lat,
-                    longitude: sourceLocation.lng,
-                  },
-                },
-              },
-              destination: {
-                location: {
-                  latLng: {
-                    latitude: destinationLocation.lat,
-                    longitude: destinationLocation.lng,
-                  },
-                },
-              },
-              travelMode: 'WALK',
-              routingPreference: 'ROUTING_PREFERENCE_UNSPECIFIED',
-              computeAlternativeRoutes: false,
-              routeModifiers: {
-                avoidTolls: false,
-                avoidHighways: false,
-                avoidFerries: false,
-              },
-              languageCode: 'en-US',
-              units: 'METRIC',
-            }),
-          }
+        console.log('[LocationSearchPage] 🗺️ Calculating route...');
+        
+        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+        const result = await fetchWalkingRoute(
+          { lat: sourceLocation.lat, lng: sourceLocation.lng },
+          { lat: destinationLocation.lat, lng: destinationLocation.lng },
+          apiKey
         );
 
-        if (!response.ok) {
-          throw new Error(`Routes API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.routes?.[0]) {
-          const distanceMeters = data.routes[0].distanceMeters;
-          const formattedDistance = formatDistance(distanceMeters);
-          setRouteDistance(formattedDistance);
-          setRouteDistanceMeters(distanceMeters);
-        } else {
+        if ('error' in result) {
+          console.error('[LocationSearchPage] ❌ Route calculation failed:', result.error);
           setRouteDistance(null);
           setRouteDistanceMeters(null);
+          setRoutePolyline([]);
+          return;
         }
+
+        const distanceMeters = result.distanceMeters;
+        const formattedDistance = formatDistance(distanceMeters);
+        
+        console.log('[LocationSearchPage] ✅ Route calculated:', {
+          distance: formattedDistance,
+          polylinePoints: result.decodedPolyline.length,
+        });
+
+        setRouteDistance(formattedDistance);
+        setRouteDistanceMeters(distanceMeters);
+        setRoutePolyline(result.decodedPolyline);
       } catch (error) {
-        console.error('Error calculating distance:', error);
+        console.error('[LocationSearchPage] ❌ Error calculating route:', error);
         setRouteDistance(null);
         setRouteDistanceMeters(null);
+        setRoutePolyline([]);
       } finally {
         setIsCalculatingDistance(false);
       }
     };
 
-    calculateDistance();
+    calculateRoute();
   }, [sourceLocation, destinationLocation, sourceHasValidSelection, destinationHasValidSelection]);
 
   const popularRoutes = [
@@ -658,6 +684,7 @@ export const LocationSearchPage = ({
             onLocationChange={handleSourceLocationChange}
             onInvalidLocation={handleSourceInvalid}
             onSelectionStateChange={handleSourceSelectionStateChange}
+            routePolyline={routePolyline}
           />
 
           <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent flex-shrink-0" />
@@ -672,6 +699,7 @@ export const LocationSearchPage = ({
             onLocationChange={handleDestinationLocationChange}
             onInvalidLocation={handleDestinationInvalid}
             onSelectionStateChange={handleDestinationSelectionStateChange}
+            routePolyline={routePolyline}
           />
         </div>
 
