@@ -7,6 +7,11 @@
 const ENABLE_OPENAI_API_CALLS = true;
 // ============================================================================
 
+// IndexedDB configuration
+const DB_NAME = 'YouAreHere';
+const STORE_NAME = 'ttsAudio';
+const DB_VERSION = 1;
+
 export interface EnhancedDescriptionResult {
   enhancedDescription: string;
 }
@@ -23,6 +28,134 @@ export interface AudioSynthesisResult {
 export interface AudioSynthesisError {
   error: string;
 }
+
+/**
+ * Initialize IndexedDB database
+ */
+const initIndexedDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => {
+      console.error('[IndexedDB] ❌ Error opening database:', request.error);
+      reject(request.error);
+    };
+
+    request.onsuccess = () => {
+      console.log('[IndexedDB] ✅ Database opened successfully');
+      resolve(request.result);
+    };
+
+    request.onupgradeneeded = (event) => {
+      console.log('[IndexedDB] 🔧 Database upgrade needed, creating object store...');
+      const db = (event.target as IDBOpenDBRequest).result;
+      
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+        console.log('[IndexedDB] ✅ Object store created:', STORE_NAME);
+      }
+    };
+  });
+};
+
+/**
+ * Store audio blob in IndexedDB
+ */
+const storeAudioInIndexedDB = async (
+  storageKey: string,
+  audioBlob: Blob
+): Promise<void> => {
+  try {
+    console.log('[Audio Cache] 💾 Storing audio in IndexedDB:', {
+      key: storageKey,
+      size: audioBlob.size,
+      type: audioBlob.type,
+    });
+
+    const db = await initIndexedDB();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const objectStore = transaction.objectStore(STORE_NAME);
+      
+      const request = objectStore.put({
+        key: storageKey,
+        blob: audioBlob,
+        timestamp: Date.now(),
+      });
+
+      request.onsuccess = () => {
+        console.log('[Audio Cache] ✅ Audio stored successfully in IndexedDB:', {
+          key: storageKey,
+          blobSize: audioBlob.size,
+        });
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error('[Audio Cache] ❌ Error storing audio in IndexedDB:', request.error);
+        reject(request.error);
+      };
+
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('[Audio Cache] ❌ Error storing audio in IndexedDB:', error);
+    throw error;
+  }
+};
+
+/**
+ * Retrieve audio blob from IndexedDB
+ */
+const retrieveAudioFromIndexedDB = async (storageKey: string): Promise<Blob | null> => {
+  try {
+    console.log('[Audio Cache] 🔍 Checking IndexedDB for audio:', storageKey);
+
+    const db = await initIndexedDB();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readonly');
+      const objectStore = transaction.objectStore(STORE_NAME);
+      
+      const request = objectStore.get(storageKey);
+
+      request.onsuccess = () => {
+        const result = request.result;
+        
+        if (!result || !result.blob) {
+          console.log('[Audio Cache] ❌ Cache miss - audio not found in IndexedDB');
+          resolve(null);
+          return;
+        }
+
+        console.log('[Audio Cache] ✅ Cache hit - audio found in IndexedDB!');
+        console.log('[Audio Cache] 📊 Retrieved audio from cache:', {
+          key: storageKey,
+          blobSize: result.blob.size,
+          blobType: result.blob.type,
+          timestamp: new Date(result.timestamp).toISOString(),
+        });
+
+        resolve(result.blob);
+      };
+
+      request.onerror = () => {
+        console.error('[Audio Cache] ❌ Error retrieving audio from IndexedDB:', request.error);
+        reject(request.error);
+      };
+
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('[Audio Cache] ❌ Error retrieving audio from IndexedDB:', error);
+    return null;
+  }
+};
 
 /**
  * Sanitize location short name for use as storage key
@@ -109,89 +242,6 @@ const retrieveDescriptionFromLocalStorage = (storageKey: string): string | null 
     return description;
   } catch (error) {
     console.error('[Description Cache] ❌ Error retrieving description from localStorage:', error);
-    return null;
-  }
-};
-
-/**
- * Store audio blob in localStorage
- * Converts blob to base64 for storage
- */
-const storeAudioInLocalStorage = async (
-  storageKey: string,
-  audioBlob: Blob
-): Promise<void> => {
-  try {
-    console.log('[Audio Cache] 💾 Storing audio in localStorage:', {
-      key: storageKey,
-      size: audioBlob.size,
-      type: audioBlob.type,
-    });
-
-    // Convert blob to base64
-    const reader = new FileReader();
-    const base64Promise = new Promise<string>((resolve, reject) => {
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          resolve(reader.result);
-        } else {
-          reject(new Error('Failed to convert blob to base64'));
-        }
-      };
-      reader.onerror = reject;
-    });
-
-    reader.readAsDataURL(audioBlob);
-    const base64Data = await base64Promise;
-
-    // Store in localStorage
-    localStorage.setItem(storageKey, base64Data);
-
-    console.log('[Audio Cache] ✅ Audio stored successfully in localStorage:', {
-      key: storageKey,
-      base64Length: base64Data.length,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === 'QuotaExceededError') {
-      console.error('[Audio Cache] ❌ localStorage quota exceeded!');
-      console.error('[Audio Cache] 💡 Consider clearing old cached audio files');
-    } else {
-      console.error('[Audio Cache] ❌ Error storing audio in localStorage:', error);
-    }
-    throw error;
-  }
-};
-
-/**
- * Retrieve audio blob from localStorage (async version)
- * Converts base64 back to blob
- */
-const retrieveAudioFromLocalStorageAsync = async (storageKey: string): Promise<Blob | null> => {
-  try {
-    console.log('[Audio Cache] 🔍 Checking localStorage for audio:', storageKey);
-
-    const base64Data = localStorage.getItem(storageKey);
-    if (!base64Data) {
-      console.log('[Audio Cache] ❌ Cache miss - audio not found in localStorage');
-      return null;
-    }
-
-    console.log('[Audio Cache] ✅ Cache hit - audio found in localStorage!');
-
-    // Convert base64 to blob
-    const response = await fetch(base64Data);
-    const blob = await response.blob();
-
-    console.log('[Audio Cache] 📊 Retrieved audio from cache:', {
-      key: storageKey,
-      base64Length: base64Data.length,
-      blobSize: blob.size,
-      blobType: blob.type,
-    });
-
-    return blob;
-  } catch (error) {
-    console.error('[Audio Cache] ❌ Error retrieving audio from localStorage:', error);
     return null;
   }
 };
@@ -359,7 +409,7 @@ Write in second person ("you") to make it immersive, as if speaking directly to 
 
 /**
  * Synthesize text to speech using OpenAI TTS API
- * Checks localStorage cache first, then downloads and caches the audio file
+ * Checks IndexedDB cache first, then downloads and caches the audio file
  */
 export const synthesizeTextToSpeech = async (
   text: string,
@@ -377,11 +427,11 @@ export const synthesizeTextToSpeech = async (
   const storageKey = generateStorageKey(shortName, voice);
   console.log('[OpenAI TTS] 🔑 Storage key:', storageKey);
 
-  // Check localStorage cache first
+  // Check IndexedDB cache first
   try {
-    const cachedBlob = await retrieveAudioFromLocalStorageAsync(storageKey);
+    const cachedBlob = await retrieveAudioFromIndexedDB(storageKey);
     if (cachedBlob) {
-      console.log('[OpenAI TTS] ✅ Using cached audio from localStorage!');
+      console.log('[OpenAI TTS] ✅ Using cached audio from IndexedDB!');
       const blobUrl = URL.createObjectURL(cachedBlob);
       return {
         audioUrl: blobUrl,
@@ -444,10 +494,10 @@ export const synthesizeTextToSpeech = async (
       type: audioBlob.type,
     });
 
-    // Store in localStorage
+    // Store in IndexedDB
     try {
-      await storeAudioInLocalStorage(storageKey, audioBlob);
-      console.log('[OpenAI TTS] ✅ Audio cached in localStorage for future use');
+      await storeAudioInIndexedDB(storageKey, audioBlob);
+      console.log('[OpenAI TTS] ✅ Audio cached in IndexedDB for future use');
     } catch (cacheError) {
       console.warn('[OpenAI TTS] ⚠️ Failed to cache audio, but continuing with blob URL:', cacheError);
     }
